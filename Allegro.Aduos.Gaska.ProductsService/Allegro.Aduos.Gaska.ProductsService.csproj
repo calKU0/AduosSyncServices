@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-Allegro.Aduos.Gaska.ProductsService-cbbf5e1c-1a78-40e2-91ef-02f23e9c9bd1</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapper" Version="2.1.66" />
+    <PackageReference Include="dbup" Version="5.0.41" />
+    <PackageReference Include="dbup-sqlserver" Version="7.1.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Net.Http.Headers" Version="10.0.3" />
+    <PackageReference Include="Serilog" Version="4.3.1" />
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AduosSyncServices.Contracts\AduosSyncServices.Contracts.csproj" />
+    <ProjectReference Include="..\AduosSyncServices.Infrastructure\AduosSyncServices.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

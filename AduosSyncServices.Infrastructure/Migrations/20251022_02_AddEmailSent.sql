@@ -1,0 +1,2 @@
+﻿ALTER TABLE AllegroOrders
+ADD EmailSent BIT NOT NULL DEFAULT 0;
