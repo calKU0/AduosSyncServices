@@ -18,14 +18,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Resources\Images\" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\AduosSyncServices.Contracts\AduosSyncServices.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <None Update="Migrations\20251020_02_AddAllegroTables.sql">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Migrations\20251021_01_CreateAllegroOrdersTables.sql">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
@@ -41,7 +40,7 @@
     <None Update="Migrations\20251023_01_MessageToSeller_Nullable.sql">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Migrations\20251205_01_InitialMigration.sql">
+    <None Update="Migrations\20251020_01_InitialMigration.sql">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Migrations\20251216_01_ChangeInStockField.sql">
@@ -144,6 +143,15 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Migrations\20260212_01_FixGetOffersToUpdateStoredProcedure.sql">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Migrations\20260224_01_OptimizeUpsertOffersStoredProcedure.sql">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Migrations\20260225_01_AlterUpdateDefaultCategoryProcedure.sql">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Resources\Images\logo.jpg">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>

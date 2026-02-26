@@ -34,6 +34,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                     try
                     {
                         int categoryId = await GetCategoriesSuggestions(product, ct);
+                        await Task.Delay(250);
                         categoryResults.Add((product.Id, categoryId, product.Code, product.Name));
                     }
                     catch (Exception ex)

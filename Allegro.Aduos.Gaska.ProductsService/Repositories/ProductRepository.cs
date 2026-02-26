@@ -394,34 +394,37 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
             });
 
             // If longer than 75 chars → remove last words until < 75
+            var parts = name.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+
             while (name.Length > 75)
             {
-                var parts = name.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).ToList();
                 if (parts.Count <= 1) break; // stop if only 1 word left
                 parts.RemoveAt(parts.Count - 1);
                 name = string.Join(" ", parts);
             }
 
             // Ensure name is at least 3 characters
-            if (name.Length < 3)
+            if (parts.Count < 3)
             {
                 if (!string.IsNullOrEmpty(code))
-                    name += code;
+                    parts.Add(code);
 
-                if (name.Length < 3 && !string.IsNullOrEmpty(supplierName))
-                    name += supplierName;
+                if (parts.Count < 3 && !string.IsNullOrEmpty(supplierName))
+                    parts.Add(supplierName);
 
-                if (name.Length < 3 && crossNumbers != null && crossNumbers.Count > 0)
-                    name += crossNumbers[0];
+                if (parts.Count < 3 && crossNumbers != null && crossNumbers.Count > 0)
+                    parts.Add(crossNumbers[0]);
 
-                if (name.Length < 3 && rootBrands != null && rootBrands.Count > 0)
-                    name += rootBrands[0];
+                if (parts.Count < 3 && rootBrands != null && rootBrands.Count > 0)
+                    parts.Add(rootBrands[0]);
 
-                if (name.Length < 3)
-                    name += "JAG";
+                if (parts.Count < 3)
+                    parts.Add("JAG");
+
+                name = string.Join(" ", parts);
             }
 
-            return name;
+            return name.ToUpper();
         }
 
         public async Task UpdateCompatibilitySet(int productId, bool value, CancellationToken ct)

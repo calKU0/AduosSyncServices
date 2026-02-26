@@ -121,7 +121,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
 
         private string GetMatchingValue(Product product, CategoryParameter param)
         {
-            const string fallback = "nieznany producent";
+            const string fallback = "JAG";
 
             if (param?.Type?.Equals("dictionary", StringComparison.OrdinalIgnoreCase) == true
                 && param.Values?.Any() == true)

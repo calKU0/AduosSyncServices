@@ -13,7 +13,7 @@ namespace AduosSyncServices.Infrastructure.Services
         private readonly HttpClient _http;
         private readonly JsonSerializerOptions _options;
         private const int MaxRetries = 3;
-        private const int DelayOnTooManyRequestsMs = 30_000;
+        private const int DelayOnTooManyRequestsMs = 5_000;
 
         public AllegroApiClient(ILogger<AllegroApiClient> logger, AllegroAuthService authService, HttpClient httpClient)
         {

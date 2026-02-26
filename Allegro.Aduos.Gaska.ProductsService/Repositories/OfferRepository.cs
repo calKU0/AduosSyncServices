@@ -29,7 +29,45 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
         {
             if (offers == null || !offers.Any()) return;
 
-            _logger.LogInformation("Starting upsert of {Count} offers", offers.Count);
+            var table = new DataTable();
+            table.Columns.Add("Id", typeof(string));
+            table.Columns.Add("Account", typeof(int));
+            table.Columns.Add("Name", typeof(string));
+            var colProductId = new DataColumn("ProductId", typeof(int)) { AllowDBNull = true };
+            table.Columns.Add(colProductId);
+            table.Columns.Add("CategoryId", typeof(int));
+            table.Columns.Add("Price", typeof(decimal));
+            table.Columns.Add("Stock", typeof(int));
+            table.Columns.Add("WatchersCount", typeof(int));
+            table.Columns.Add("VisitsCount", typeof(int));
+            table.Columns.Add("Status", typeof(string));
+            var colDeliveryName = new DataColumn("DeliveryName", typeof(string)) { AllowDBNull = true };
+            table.Columns.Add(colDeliveryName);
+            table.Columns.Add("StartingAt", typeof(DateTime));
+            var colExternalId = new DataColumn("ExternalId", typeof(string)) { AllowDBNull = true };
+            table.Columns.Add(colExternalId);
+
+            foreach (var o in offers)
+            {
+                decimal.TryParse(o.SellingMode?.Price?.Amount, NumberStyles.Any, CultureInfo.InvariantCulture, out var price);
+                int.TryParse(o.Category?.Id, out var categoryId);
+
+                table.Rows.Add(
+                    o.Id,
+                    ServiceConstants.Account,
+                    o.Name ?? string.Empty,
+                    DBNull.Value,
+                    categoryId,
+                    price,
+                    o.Stock?.Available ?? 0,
+                    o.Stats?.WatchersCount ?? 0,
+                    o.Stats?.VisitsCount ?? 0,
+                    o.Publication?.Status ?? string.Empty,
+                    o.Delivery?.ShippingRates?.Name ?? (object)DBNull.Value,
+                    o.Publication?.StartingAt ?? new DateTime(1753, 1, 1),
+                    o.External?.Id ?? (object)DBNull.Value
+                );
+            }
 
             using var connection = _context.CreateConnection();
             connection.Open();
@@ -37,48 +75,19 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
 
             try
             {
-                const int batchSize = 1000;
-                // 1️ Map AllegroOffer entities
-                var allegroOffers = offers.Select(o =>
-                {
-                    decimal.TryParse(o.SellingMode?.Price?.Amount, NumberStyles.Any, CultureInfo.InvariantCulture, out var price);
-                    int.TryParse(o.Category?.Id, out var categoryId);
-
-                    return new
-                    {
-                        Id = o.Id,
-                        Account = ServiceConstants.Account,
-                        Name = o.Name ?? string.Empty,
-                        ProductId = (int?)null,
-                        CategoryId = categoryId,
-                        Price = price,
-                        Stock = o.Stock?.Available ?? 0,
-                        WatchersCount = o.Stats?.WatchersCount ?? 0,
-                        VisitsCount = o.Stats?.VisitsCount ?? 0,
-                        Status = o.Publication?.Status ?? string.Empty,
-                        DeliveryName = o.Delivery?.ShippingRates?.Name,
-                        StartingAt = o.Publication?.StartingAt ?? new DateTime(1753, 1, 1),
-                        ExternalId = o.External?.Id
-                    };
-                }).ToList();
-
-                foreach (var batch in allegroOffers.Chunk(batchSize))
-                {
-                    await connection.ExecuteAsync(
-                        "AllegroOffers_Upsert",
-                        batch,
-                        transaction,
-                        commandType: CommandType.StoredProcedure,
-                        commandTimeout: 900);
-                }
+                // ONE database call for all rows
+                await connection.ExecuteAsync(
+                    "AllegroOffers_Upsert",
+                    new { Offers = table.AsTableValuedParameter("dbo.AllegroOfferType") },
+                    transaction,
+                    commandType: CommandType.StoredProcedure,
+                    commandTimeout: 900);
 
                 transaction.Commit();
-                _logger.LogInformation("Upsert of offers completed: {Count} processed", allegroOffers.Count);
             }
             catch (Exception ex)
             {
                 transaction.Rollback();
-                _logger.LogError(ex, "Failed upsert of offers");
                 throw;
             }
         }
@@ -86,8 +95,6 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
         public async Task UpsertOfferDetails(List<AllegroOfferDetails.Root> offers, CancellationToken ct)
         {
             if (offers == null || !offers.Any()) return;
-
-            _logger.LogInformation("Starting upsert of {Count} offer details", offers.Count);
 
             using var connection = _context.CreateConnection();
             connection.Open();
@@ -194,12 +201,10 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
                 }
 
                 transaction.Commit();
-                _logger.LogInformation("Upsert of offer details completed");
             }
             catch (Exception ex)
             {
                 transaction.Rollback();
-                _logger.LogError(ex, "Failed upsert of offer details");
                 throw;
             }
         }

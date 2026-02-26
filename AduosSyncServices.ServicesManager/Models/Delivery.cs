@@ -1,6 +1,12 @@
-﻿namespace AduosSyncServices.Contracts.Settings
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace AduosSyncServices.ServicesManager.Models
 {
-    public class DeliverySettings
+    public class Delivery
     {
         public int Width { get; set; }
         public int Length { get; set; }

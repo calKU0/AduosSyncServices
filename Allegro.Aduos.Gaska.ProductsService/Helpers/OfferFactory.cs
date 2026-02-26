@@ -1,7 +1,6 @@
 ﻿using AduosSyncServices.Contracts.DTOs.Allegro;
 using AduosSyncServices.Contracts.Models;
 using AduosSyncServices.Contracts.Settings;
-using AduosSyncServices.Infrastructure.Helpers;
 using Allegro.Aduos.Gaska.ProductsService.Settings;
 using System.Globalization;
 using System.Text;
@@ -28,11 +27,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                 priceSettings,
                 publicationStatus: "ACTIVE",
                 startingAt: DateTime.UtcNow,
-                categoryId: product.DefaultAllegroCategory.ToString(),
-                name: product.Name,
-                stockOverride: null,
-                includeCategory: true,
-                includeProductParameters: true);
+                stockOverride: null);
         }
 
         public static ProductOfferRequest PatchOffer(
@@ -54,11 +49,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                 priceSettings,
                 publicationStatus: product.InStock >= appSettings.MinProductStock && product.PriceNet >= appSettings.MinProductPriceNet ? "ACTIVE" : "ENDED",
                 startingAt: null,
-                categoryId: null,          // nie nadpisujemy kategorii przy patchu
-                name: null,                // nie nadpisujemy nazwy przy patchu
-                stockOverride: Convert.ToInt32(Math.Floor(product.InStock)),
-                includeCategory: false,
-                includeProductParameters: false);
+                stockOverride: Convert.ToInt32(Math.Floor(product.InStock)));
         }
 
         private static ProductOfferRequest CreateOffer(
@@ -70,18 +61,15 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
             PriceSettings priceSettings,
             string publicationStatus,
             DateTime? startingAt,
-            string? categoryId,
-            string? name,
-            int? stockOverride,
-            bool includeCategory,
-            bool includeProductParameters)
+            int? stockOverride)
         {
             var price = CalculatePrice(product, priceSettings, quantity);
             var available = CalculateAvailableStock(stockOverride, product.InStock, quantity);
 
             var offer = new ProductOfferRequest
             {
-                ProductSet = BuildProductSet(product, quantity, allegroSettings, includeProductParameters),
+                Name = product.Name,
+                ProductSet = BuildProductSet(product, quantity, allegroSettings),
                 Stock = new Stock
                 {
                     Available = available,
@@ -100,6 +88,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                 Description = BuildDescription(product),
                 External = new External { Id = product.Code },
                 Publication = new Publication { Status = available < 1 ? "ENDED" : publicationStatus, StartingAt = startingAt },
+                Category = new() { Id = product.DefaultAllegroCategory.ToString() },
                 Delivery = new Delivery
                 {
                     ShippingRates = new ShippingRates { Name = GetDelivery(product, appSettings.Deliveries) },
@@ -118,16 +107,6 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                     ? BuildCompatibilityList(product.DefaultAllegroCategory, product.Applications, allegroCategories)
                     : null
             };
-
-            if (includeCategory && categoryId is not null)
-            {
-                offer.Category = new Category { Id = categoryId };
-            }
-
-            if (!string.IsNullOrWhiteSpace(name))
-            {
-                offer.Name = name;
-            }
 
             return offer;
         }
@@ -155,7 +134,6 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
             Product product,
             int quantity,
             AllegroSettings allegroSettings,
-            bool includeProductParameters = true,
             string fallbackCat = "319123")
         {
             var categoryId = product.DefaultAllegroCategory.ToString();
@@ -164,7 +142,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                 Name = product.Name,
                 Category = new Category { Id = categoryId == "0" ? fallbackCat : categoryId },
                 Images = product.AllegroImages.DistinctBy(i => i.Url).Select(i => i.Url).ToList(),
-                Parameters = includeProductParameters ? BuildParameters(product.Parameters, isForProduct: true) : null,
+                Parameters = BuildParameters(product.Parameters, isForProduct: true),
             };
 
             return new List<ProductSet>
@@ -333,86 +311,38 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
 
         private static Description BuildDescription(Product product)
         {
+            var logoUrl = product.AllegroImages.Last().Url;
+
             var description = new Description { Sections = new List<Section>() };
-            var images = product.AllegroImages.DistinctBy(i => i.Url).Select(i => i.Url).ToList();
+            var images = product.AllegroImages
+                .DistinctBy(i => i.Url)
+                .Select(i => i.Url)
+                .Where(url => url != logoUrl)
+                .ToList();
             var imageIndex = 0;
 
-            if (images.Any())
-            {
-                description.Sections.Add(new Section
-                {
-                    SectionItems = new List<SectionItem>
-                    {
-                        new() { Type = "IMAGE", Url = images[imageIndex++] }
-                    }
-                });
-            }
-
-            var originalHtml = string.IsNullOrEmpty(product.SupplierName)
-                ? $"<h2>{RemoveHiddenAscii(System.Net.WebUtility.HtmlEncode("PRODUKT JEST ZAMIENNIKIEM"))}</h2>"
-                : string.Empty;
-
-            var nameHtml = $"<p><b>{RemoveHiddenAscii(System.Net.WebUtility.HtmlEncode(product.Name))}</b></p>";
-            var codeHtml = string.IsNullOrWhiteSpace(product.Code)
-                ? string.Empty
-                : $"<p><b>Kod produktu: </b>{RemoveHiddenAscii(System.Net.WebUtility.HtmlEncode(product.Code))}</p>";
-            var producerHtml = string.IsNullOrWhiteSpace(product.SupplierName)
-                ? string.Empty
-                : $"<p><b>Producent: </b>{RemoveHiddenAscii(System.Net.WebUtility.HtmlEncode(product.SupplierName))}</p>";
+            var nameH1Html = $"<h1>{RemoveHiddenAscii(System.Net.WebUtility.HtmlEncode(product.Name))}</h1>";
+            var nameH2Html = $"<h2>{RemoveHiddenAscii(System.Net.WebUtility.HtmlEncode(product.Name))}</h2>";
             var descriptionHtml = string.IsNullOrWhiteSpace(product.Description)
                 ? string.Empty
-                : $"<p><b>Opis: </b>{RemoveHiddenAscii(System.Net.WebUtility.HtmlEncode(product.Description))}</p>";
+                : $"<p>➡️ {RemoveHiddenAscii(System.Net.WebUtility.HtmlEncode(product.Description))}</p>";
 
             var parametersHtml = string.Empty;
             if (product.Specifications?.Any() == true)
             {
                 var attributesList = string.Join("",
                     product.Specifications.Select(p =>
-                        $"<li>{RemoveHiddenAscii(System.Net.WebUtility.HtmlEncode(p.Name))}: {RemoveHiddenAscii(System.Net.WebUtility.HtmlEncode(p.Value))} {RemoveHiddenAscii(System.Net.WebUtility.HtmlEncode(p.UnitName))}</li>"));
-                parametersHtml = $"<p><b>Parametry/Wymiary:</b></p><ul>{attributesList}</ul>";
-            }
-
-            var package = product.Packages?.FirstOrDefault(p => p.PackRequired == 1);
-            var warning = string.Empty;
-
-            if (string.Equals(product.Unit, "MB", StringComparison.OrdinalIgnoreCase))
-            {
-                warning = $"<p><b>UWAGA:</b> {System.Net.WebUtility.HtmlEncode("PODANA CENA KUP TERAZ TO CENA ZA 1 METR BIEŻĄCY")}</p>";
-            }
-
-            if (package != null)
-            {
-                warning = $"<p><b>UWAGA:</b> {System.Net.WebUtility.HtmlEncode($"PODANA CENA KUP TERAZ TO CENA ZA 1 KOMPLET = {package.PackQty} {ConjugationHelper.Unit(Convert.ToInt32(package.PackQty), product.Unit).ToUpper()}")}</p>";
+                        $"<p>➡️ {RemoveHiddenAscii(System.Net.WebUtility.HtmlEncode(p.Name))}: {RemoveHiddenAscii(System.Net.WebUtility.HtmlEncode(p.Value))} {RemoveHiddenAscii(System.Net.WebUtility.HtmlEncode(p.UnitName))}</p>"));
+                parametersHtml = $"<p><b>⚙️ Parametry/Wymiary:</b></p>{attributesList}";
             }
 
             var crossNumbersText = string.Empty;
             if (!string.IsNullOrEmpty(product.Substitutes))
             {
-                crossNumbersText = $"<p><b>Numery referencyjne: </b>{product.Substitutes}</p>";
+                crossNumbersText = $"<p><b>⚙️ Numery katalogowe: </b>{product.Substitutes}</p>";
             }
 
-            var contentBuilder = new StringBuilder()
-                .Append(originalHtml)
-                .Append(nameHtml)
-                .Append(codeHtml)
-                .Append(producerHtml)
-                .Append(descriptionHtml)
-                .Append(parametersHtml)
-                .Append(crossNumbersText)
-                .Append(warning);
-
-            var sectionItems = new List<SectionItem>
-            {
-                new() { Type = "TEXT", Content = contentBuilder.ToString() }
-            };
-
-            if (imageIndex < images.Count - 1)
-            {
-                sectionItems.Add(new SectionItem { Type = "IMAGE", Url = images[imageIndex++] });
-            }
-
-            description.Sections.Add(new Section { SectionItems = sectionItems });
-
+            var applicationsText = string.Empty;
             if (product.Applications?.Any() == true)
             {
                 var applicationsByParent = product.Applications
@@ -451,28 +381,49 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                         foreach (var secondLevel in applicationsByParent[rootApp.ApplicationId])
                         {
                             var leafs = GetLeafNames(secondLevel.ApplicationId);
-                            var li = $"<li><b>{System.Net.WebUtility.HtmlEncode(rootApp.Name)} - {System.Net.WebUtility.HtmlEncode(secondLevel.Name)}</b>: {leafs}</li>";
+                            var li = $"<p><b>➡️ {System.Net.WebUtility.HtmlEncode(rootApp.Name)} - {System.Net.WebUtility.HtmlEncode(secondLevel.Name)}:</b></p><p> ⚙️ {leafs}</p>";
                             listItems.Add(li);
                         }
                     }
 
-                    var appsText = $"<ul>{string.Join("", listItems)}</ul>";
-
-                    var appSectionItems = new List<SectionItem>();
-                    if (imageIndex < images.Count - 1)
-                    {
-                        appSectionItems.Add(new SectionItem { Type = "IMAGE", Url = images[imageIndex++] });
-                    }
-
-                    appSectionItems.Add(new SectionItem
-                    {
-                        Type = "TEXT",
-                        Content = $"<p><b>Zastosowanie: </b></p>{appsText}"
-                    });
-
-                    description.Sections.Add(new Section { SectionItems = appSectionItems });
+                    applicationsText = $"{string.Join("", listItems)}";
                 }
             }
+
+            var technicalDetailsText = string.Empty;
+            if (!string.IsNullOrEmpty(crossNumbersText) || !string.IsNullOrEmpty(parametersHtml))
+            {
+                technicalDetailsText = $"<h2>☑️ DANE TECHNICZNE:</h2>";
+            }
+
+            var applicationLabel = string.Empty;
+            if (!string.IsNullOrEmpty(applicationsText))
+            {
+                applicationLabel = $"<h2>☑️ ZASTOSOWANIE:</h2>";
+            }
+
+            description.Sections.Add(new Section { SectionItems = new List<SectionItem> { new() { Type = "TEXT", Content = nameH1Html } } });
+            description.Sections.Add(new Section { SectionItems = new List<SectionItem> { new() { Type = "IMAGE", Url = logoUrl } } });
+
+            var descriptionSection = new StringBuilder()
+                .Append(nameH2Html)
+                .Append("<p>✨✨✨✨</p>")
+                .Append(descriptionHtml)
+                .Append(technicalDetailsText)
+                .Append(parametersHtml)
+                .Append(crossNumbersText)
+                .Append(applicationLabel)
+                .Append(applicationsText)
+                .Append("<h2>✨WYSOKIEJ JAKOŚCI CZĘŚĆ ZAMIENNA RENOMOWANEJ FIRMY✨</h2>");
+
+            var descriptionSectionItems = new List<SectionItem>
+            {
+                new() { Type = "TEXT", Content = descriptionSection.ToString() },
+                new() { Type = "IMAGE", Url = images[imageIndex++] }
+            };
+
+            description.Sections.Add(new Section { SectionItems = descriptionSectionItems });
+            description.Sections.Add(new Section { SectionItems = new List<SectionItem> { new() { Type = "IMAGE", Url = logoUrl } } });
 
             while (imageIndex < images.Count)
             {
@@ -486,7 +437,17 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                     sectionImageItems.Add(new SectionItem { Type = "IMAGE", Url = images[imageIndex++] });
                 }
 
+                // Add images section (image1,image2 etc.)
                 description.Sections.Add(new Section { SectionItems = sectionImageItems });
+
+                // Add logo section AFTER each image section
+                description.Sections.Add(new Section
+                {
+                    SectionItems = new List<SectionItem>
+                    {
+                        new() { Type = "IMAGE", Url = logoUrl }
+                    }
+                });
             }
 
             return description;
@@ -497,11 +458,21 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
             if (deliveries == null || deliveries.Count == 0)
                 return null;
 
+            if (product.DeliveryType == 2)
+            {
+                return deliveries
+                    .OrderByDescending(d => d.Weight)
+                    .ThenByDescending(d => d.Length * d.Width * d.Height)
+                    .First()
+                    .DeliveryName;
+            }
+
             var productWeight = (decimal)product.Weight;
 
             var length = GetDimensionCm(product, "Długość");
             var width = GetDimensionCm(product, "Szerokość");
             var height = GetDimensionCm(product, "Wysokość");
+
 
             var matchingDelivery = deliveries
                 .Where(d =>
@@ -521,7 +492,6 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                     .First()
                     .DeliveryName;
         }
-
         private static decimal? GetDimensionCm(Product product, string dimensionName)
         {
             var spec = product.Specifications?
@@ -549,18 +519,16 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
 
         private static decimal CalculatePrice(Product product, PriceSettings priceSettings, int quantity)
         {
-            var calculatedPrice = product.PriceGross;
+            var effectiveMargin = ResolveMargin(priceSettings, product.PriceNet);
+            var calculatedPrice = product.PriceNet * quantity * (1 + effectiveMargin / 100m);
 
-            var effectiveMargin = ResolveMargin(priceSettings, product.PriceGross);
-            calculatedPrice = product.PriceGross * quantity * (1 + effectiveMargin / 100m);
-
-            return calculatedPrice;
+            return Math.Ceiling(calculatedPrice) - 0.01m;
         }
 
-        private static decimal ResolveMargin(PriceSettings priceSettings, decimal grossPrice)
+        private static decimal ResolveMargin(PriceSettings priceSettings, decimal netPrice)
         {
             var range = priceSettings.MarginRanges
-                .FirstOrDefault(r => grossPrice >= r.Min && grossPrice <= r.Max);
+                .FirstOrDefault(r => netPrice >= r.Min && netPrice <= r.Max);
 
             if (range == null)
                 return priceSettings.MarginRanges.Last().Margin;

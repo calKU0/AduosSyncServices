@@ -144,6 +144,7 @@ BEGIN
         ps.UnitName
     FROM Products p
     LEFT JOIN ProductSpecifications ps ON ps.ProductId = p.Id
+    JOIN dbo.ProductCategories pc ON p.Id = pc.ProductId 
     WHERE NULLIF(p.DefaultAllegroCategory, 0) IS NULL
       AND IntegrationCompany = @IntegrationCompany
     ORDER BY p.Id;
@@ -279,25 +280,25 @@ BEGIN
 END
 GO
 
-CREATE OR ALTER PROCEDURE dbo.Category_DeleteByProductId
+CREATE OR ALTER PROCEDURE dbo.ProductCategories_DeleteByProductId
     @ProductId INT
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    DELETE FROM Category
+    DELETE FROM ProductCategories
     WHERE ProductId = @ProductId;
 END
 GO
 
-CREATE OR ALTER PROCEDURE dbo.Category_Insert
+CREATE OR ALTER PROCEDURE dbo.ProductCategories_Insert
     @ProductId INT,
     @Name NVARCHAR(255)
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    INSERT INTO Category (ProductId, Name)
+    INSERT INTO ProductCategories (ProductId, Name)
     VALUES (@ProductId, @Name);
 END
 GO

@@ -2,33 +2,72 @@
 {
     public static class ImageHelper
     {
-        public static async Task<string?> SaveImageAsync(HttpClient httpClient, string url, int productId, string baseDirectory, CancellationToken ct = default)
+        public static async Task<List<string>> SaveImagesAsync(
+            HttpClient httpClient,
+            List<string> urls,
+            int productId,
+            string baseDirectory,
+            CancellationToken ct = default)
         {
-            if (string.IsNullOrWhiteSpace(url) || productId <= 0)
-                return null;
+            var savedFiles = new List<string>();
+
+            if (urls == null || urls.Count == 0 || productId <= 0)
+                return savedFiles;
 
             var productFolder = Path.Combine(baseDirectory, productId.ToString());
+
+            // Ensure directory exists
             Directory.CreateDirectory(productFolder);
 
-            var imgBytes = await httpClient.GetByteArrayAsync(url, ct);
-
-            var extension = Path.GetExtension(url);
-            if (string.IsNullOrWhiteSpace(extension))
-                extension = ".jpg";
-
-            var counter = 1;
-            string filePath;
-
-            do
+            // DELETE existing images first
+            var existingFiles = Directory.GetFiles(productFolder, "*.*", SearchOption.TopDirectoryOnly);
+            foreach (var file in existingFiles)
             {
-                var fileName = $"image_{counter}{extension}";
-                filePath = Path.Combine(productFolder, fileName);
-                counter++;
-            }
-            while (File.Exists(filePath));
+                try
+                {
+                    File.Delete(file);
+                }
+                catch
+                {
 
-            await File.WriteAllBytesAsync(filePath, imgBytes, ct);
-            return filePath;
+                }
+            }
+
+            int counter = 1;
+
+            foreach (var url in urls)
+            {
+                if (string.IsNullOrWhiteSpace(url))
+                    continue;
+
+                if (!Uri.TryCreate(url, UriKind.Absolute, out var uriResult) || (uriResult.Scheme != Uri.UriSchemeHttp && uriResult.Scheme != Uri.UriSchemeHttps))
+                    continue;
+
+                try
+                {
+                    var imgBytes = await httpClient.GetByteArrayAsync(url, ct);
+
+                    var extension = Path.GetExtension(url);
+
+                    if (string.IsNullOrWhiteSpace(extension) || extension.Length > 5)
+                        extension = ".jpg";
+
+                    var fileName = $"image_{counter}{extension}";
+                    var filePath = Path.Combine(productFolder, fileName);
+
+                    await File.WriteAllBytesAsync(filePath, imgBytes, ct);
+
+                    savedFiles.Add(filePath);
+
+                    counter++;
+                }
+                catch
+                {
+
+                }
+            }
+
+            return savedFiles;
         }
 
         public static List<string> GetImageFiles(string folderPath, int productId)

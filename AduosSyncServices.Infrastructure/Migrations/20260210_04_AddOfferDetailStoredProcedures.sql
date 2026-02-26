@@ -143,7 +143,7 @@ BEGIN
     LEFT JOIN ProductSpecifications ps ON ps.ProductId = p.Id
     JOIN ProductParameters pp ON pp.ProductId = p.Id
     JOIN CategoryParameters cp ON cp.Id = pp.CategoryParameterId
-    JOIN Category rc ON rc.ProductId = p.Id
+    JOIN ProductCategories rc ON rc.ProductId = p.Id
     LEFT JOIN ProductApplications ap ON ap.ProductId = p.Id
     LEFT JOIN ProductPackages pack ON pack.ProductId = p.Id
     LEFT JOIN AllegroOffers ao ON ao.ExternalId = p.Code AND ao.Account = @Account

@@ -79,6 +79,12 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                 // Merge both lists
                 latestOffers.AddRange(groupedByName);
 
+                var parallelOptions = new ParallelOptions
+                {
+                    CancellationToken = ct,
+                    MaxDegreeOfParallelism = 25
+                };
+
                 // Update shipping info & categories
                 foreach (var offer in latestOffers)
                 {
@@ -88,12 +94,13 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                         offer.Delivery.ShippingRates.Name = name;
                     }
 
-                    if (offer.External?.Id != null)
+                    if (offer.External?.Id != null && offer.Publication.Status != "ENDED")
                     {
                         await _productRepo.UpdateProductAllegroCategory(offer.External.Id, offer.Category.Id, ct);
                     }
                 }
 
+                _logger.LogInformation("Attempting to update database offers.");
                 await _offerRepo.UpsertOffers(latestOffers, ct);
                 _logger.LogInformation("Fetched and saved {Count} offers from Allegro.", latestOffers.Count);
             }
@@ -109,31 +116,51 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
             try
             {
                 var allOffers = await _offerRepo.GetOffersWithoutDetails(ct);
-                var offersDetails = new List<AllegroOfferDetails.Root>();
-                foreach (var offer in allOffers)
+
+                var offersDetails = new ConcurrentBag<AllegroOfferDetails.Root>();
+                int processedCount = 0;
+
+                var parallelOptions = new ParallelOptions
+                {
+                    CancellationToken = ct,
+                    MaxDegreeOfParallelism = 25
+                };
+
+                await Parallel.ForEachAsync(allOffers, parallelOptions, async (offer, token) =>
                 {
                     try
                     {
-                        var detailedOffer = await _apiClient.GetAsync<AllegroOfferDetails.Root>($"/sale/product-offers/{offer.Id}", ct);
+                        var detailedOffer = await _apiClient.GetAsync<AllegroOfferDetails.Root>(
+                            $"/sale/product-offers/{offer.Id}", token);
+
                         if (detailedOffer == null)
-                            continue;
+                            return;
 
                         detailedOffer.Delivery.ShippingRates.Id = offer.DeliveryName;
-                        if (detailedOffer != null)
+
+                        offersDetails.Add(detailedOffer);
+
+                        var current = Interlocked.Increment(ref processedCount);
+
+                        if (current % 500 == 0)
                         {
-                            offersDetails.Add(detailedOffer);
+                            _logger.LogInformation("Processed {ProcessedCount} / {TotalCount} offers. Details collected so far: {DetailsCount}", current, allOffers.Count, offersDetails.Count);
                         }
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Exception while fetching details for offer ID {OfferId}", offer.Id);
+                        var current = Interlocked.Increment(ref processedCount);
+
+                        _logger.LogError(ex, "Exception while fetching details for offer ID {OfferId}. Processed so far: {ProcessedCount}", offer.Id, current);
                     }
-                }
-                if (offersDetails.Count >= 1)
+                });
+
+                if (!offersDetails.IsEmpty)
                 {
-                    await _offerRepo.UpsertOfferDetails(offersDetails, ct);
+                    await _offerRepo.UpsertOfferDetails(offersDetails.ToList(), ct);
                 }
-                _logger.LogInformation("Fetched and saved {Count} offer details from Allegro.", offersDetails.Count);
+
+                _logger.LogInformation("Finished syncing Allegro offer details. Processed {ProcessedCount} offers. Saved {SavedCount} details.", processedCount, offersDetails.Count);
             }
             catch (Exception ex)
             {
@@ -143,31 +170,75 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
 
         private async Task<List<Offer>> FetchAllOffers(CancellationToken ct)
         {
-            var allOffers = new List<Offer>();
-            int limit = 1000;
-            int offset = 0;
+            const int limit = 100;
+            const int maxParallelism = 25;
 
-            while (!ct.IsCancellationRequested)
+            var allOffers = new ConcurrentBag<Offer>();
+
+            try
             {
-                try
+                var firstPage = await _apiClient.GetAsync<OffersResponse>($"/sale/offers?limit={limit}&offset=0", ct);
+
+                if (firstPage?.Offers == null || firstPage.Offers.Count == 0)
                 {
-                    var page = await _apiClient.GetAsync<OffersResponse>($"/sale/offers?limit={limit}&offset={offset}", ct);
-
-                    if (page?.Offers == null || !page.Offers.Any()) break;
-
-                    allOffers.AddRange(page.Offers);
-                    if (page.Offers.Count < limit) break;
-
-                    offset += limit;
+                    _logger.LogInformation("No offers found.");
+                    return new List<Offer>();
                 }
-                catch (Exception ex)
+
+                foreach (var offer in firstPage.Offers)
+                    allOffers.Add(offer);
+
+                int totalCount = firstPage.TotalCount;
+                int totalPages = (int)Math.Ceiling((double)totalCount / limit);
+
+                _logger.LogInformation("Fetched page 1 with {PageCount} offers. Total offers reported: {TotalCount}. Total pages: {TotalPages}", firstPage.Offers.Count, totalCount, totalPages);
+
+                var offsets = Enumerable.Range(1, totalPages - 1)
+                    .Select(page => page * limit)
+                    .ToList();
+
+                var parallelOptions = new ParallelOptions
                 {
-                    _logger.LogError(ex, "Exception while fetching offers at offset {Offset}", offset);
-                    break;
-                }
+                    CancellationToken = ct,
+                    MaxDegreeOfParallelism = maxParallelism
+                };
+
+                int processedPages = 1;
+
+                await Parallel.ForEachAsync(offsets, parallelOptions, async (offset, token) =>
+                {
+                    int pageNumber = (offset / limit) + 1;
+
+                    try
+                    {
+                        var page = await _apiClient.GetAsync<OffersResponse>(
+                            $"/sale/offers?limit={limit}&offset={offset}", token);
+
+                        if (page?.Offers == null)
+                            return;
+
+                        foreach (var offer in page.Offers)
+                            allOffers.Add(offer);
+
+                        var currentPage = Interlocked.Increment(ref processedPages);
+
+                        _logger.LogInformation("Fetched page {PageNumber} with {PageCount} offers. Progress: {ProcessedPages}/{TotalPages}. Total collected: {TotalCollected}", pageNumber, page.Offers.Count, currentPage, totalPages, allOffers.Count);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Exception while fetching page {PageNumber}", pageNumber);
+                    }
+                });
+
+                _logger.LogInformation("Finished fetching offers. Total fetched: {TotalCount}", allOffers.Count);
+
+                return allOffers.ToList();
             }
-
-            return allOffers;
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Fatal error while fetching offers.");
+                throw;
+            }
         }
 
         public async Task UpdateOffers(CancellationToken ct = default)
@@ -347,7 +418,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                              err.Message.Contains("parameter for the offered product"))
                         )
                         {
-                            _logger.LogInformation("Offer {Action} error for {Name}: Code={Code}, Message={Message}, UserMessage={UserMessage}, Path={Path}, Details={Details}", action, product.Code, err.Code, err.Message, err.UserMessage ?? "N/A", err.Path ?? "N/A", err.Details ?? "N/A");
+                            _logger.LogInformation("Offer {Action} error for {Name}: Code={Code}, Message={Message}", action, product.Code, err.Code, err.Message);
                             // Try to extract from either UserMessage or Message
                             var sourceMessage = !string.IsNullOrEmpty(err.UserMessage) ? err.UserMessage : err.Message;
 
@@ -402,8 +473,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                         }
                         else
                         {
-                            _logger.LogError("Offer {Action} error for {Code}: Code={Code}, Message={Message}, UserMessage={UserMessage}, Path={Path}, Details={Details}",
-                                action, product.Code, err.Code, err.Message, err.UserMessage ?? "N/A", err.Path ?? "N/A", err.Details ?? "N/A");
+                            _logger.LogError("Offer {Action} error for {ProductCode}: Code={Code}, Message={Message}", action, product.Code, err.Code, err.Message);
                         }
                     }
                 }
@@ -420,6 +490,56 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                 }
                 _logger.LogError(exParse, $"Failed to parse Allegro error ({response.StatusCode}) while {action} offer for {product.Code}. Body={body}");
             }
+        }
+
+        private string ExtractParameterNameFromNotFoundMessage(string message)
+        {
+            const string prefix = "Parameter ";
+            const string suffix = " not found";
+
+            var start = message.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
+            var end = message.IndexOf(suffix, StringComparison.OrdinalIgnoreCase);
+
+            if (start >= 0 && end > start)
+            {
+                start += prefix.Length;
+                return message.Substring(start, end - start).Trim();
+            }
+
+            return null;
+        }
+        private string ExtractCorrectCategoryId(string message)
+        {
+            // Try to match specifically "produktu (123456)" first (preferred pattern)
+            var correctMatch = Regex.Match(message, @"produktu\s*\((\d+)\)", RegexOptions.IgnoreCase);
+            if (correctMatch.Success)
+                return correctMatch.Groups[1].Value;
+
+            // Fallback: if message contains multiple category IDs, assume the last one is correct
+            var allMatches = Regex.Matches(message, @"\((\d+)\)");
+            if (allMatches.Count > 1)
+                return allMatches[^1].Groups[1].Value;
+
+            return allMatches.Count == 1 ? allMatches[0].Groups[1].Value : null;
+        }
+
+        private string ExtractCorrectParameterValue(string message)
+        {
+            // Matches "is: "JAG"", "to: "JAG"", or Polish "to: "JAG""
+            // Look for the last quoted string in the message
+            var matches = Regex.Matches(message, @"[""“‘`]([^""”’`]+)[""“‘`]");
+            if (matches.Count > 0)
+            {
+                return matches[^1].Groups[1].Value; // Take the last quoted value (usually the "correct" one)
+            }
+            return null;
+        }
+
+        private string ExtractParameterIdFromConstraintMessage(string message)
+        {
+            // Matches either "id: 123" or "(123)"
+            var match = Regex.Match(message, @"(?:id:\s*|[(])(\d+)[)]", RegexOptions.IgnoreCase);
+            return match.Success ? match.Groups[1].Value : null;
         }
         private async Task<List<AllegroImages>> ImportImages(Product product, CancellationToken ct)
         {
@@ -487,7 +607,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                 AppDomain.CurrentDomain.BaseDirectory,
                 "Resources",
                 "Images",
-                "jsagro-logo.jpg");
+                "logo.jpg");
 
             try
             {
@@ -525,52 +645,6 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
             }
 
             return result;
-        }
-
-
-        private string ExtractCorrectCategoryId(string message)
-        {
-            // Try to match specifically "produktu (123456)" first (preferred pattern)
-            var correctMatch = Regex.Match(message, @"produktu\s*\((\d+)\)", RegexOptions.IgnoreCase);
-            if (correctMatch.Success)
-                return correctMatch.Groups[1].Value;
-
-            // Fallback: if message contains multiple category IDs, assume the last one is correct
-            var allMatches = Regex.Matches(message, @"\((\d+)\)");
-            if (allMatches.Count > 1)
-                return allMatches[^1].Groups[1].Value;
-
-            return allMatches.Count == 1 ? allMatches[0].Groups[1].Value : null;
-        }
-
-        private string ExtractParameterNameFromNotFoundMessage(string message)
-        {
-            const string prefix = "Parameter ";
-            const string suffix = " not found";
-
-            var start = message.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
-            var end = message.IndexOf(suffix, StringComparison.OrdinalIgnoreCase);
-
-            if (start >= 0 && end > start)
-            {
-                start += prefix.Length;
-                return message.Substring(start, end - start).Trim();
-            }
-
-            return null;
-        }
-
-        private string ExtractCorrectParameterValue(string message)
-        {
-            // Handles: "change the value to `JAG`" OR `"JAG"` OR similar phrases
-            var match = Regex.Match(message, @"value\s*(?:to|is)\s*[`""]([^`""]+)[`""]", RegexOptions.IgnoreCase);
-            return match.Success ? match.Groups[1].Value : null;
-        }
-
-        private string ExtractParameterIdFromConstraintMessage(string message)
-        {
-            var match = Regex.Match(message, @"id:\s*(\d+)", RegexOptions.IgnoreCase);
-            return match.Success ? match.Groups[1].Value : null;
         }
     }
 }
