@@ -48,7 +48,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                 appSettings,
                 priceSettings,
                 publicationStatus: product.InStock >= appSettings.MinProductStock && product.PriceNet >= appSettings.MinProductPriceNet ? "ACTIVE" : "ENDED",
-                startingAt: null,
+                startingAt: offer.Status == "INACTIVE" ? DateTime.UtcNow : null,
                 stockOverride: Convert.ToInt32(Math.Floor(product.InStock)));
         }
 
@@ -95,6 +95,18 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                     HandlingTime = product.DeliveryType == 0
                         ? allegroSettings.AllegroHandlingTime
                         : allegroSettings.AllegroHandlingTimeCustomProducts
+                },
+                TaxSettings = new()
+                {
+                    Rates = new List<Rate>
+                    {
+                        new Rate
+                        {
+                            RateValue = "23.00",
+                            CountryCode = "PL"
+                        }
+                    },
+                    Subject = "GOODS"
                 },
                 AfterSalesServices = new AfterSalesServices
                 {

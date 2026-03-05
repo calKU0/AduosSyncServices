@@ -252,7 +252,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                 var parallelOptions = new ParallelOptions
                 {
                     CancellationToken = ct,
-                    MaxDegreeOfParallelism = 25
+                    MaxDegreeOfParallelism = 20
                 };
 
                 await Parallel.ForEachAsync(offers, parallelOptions, async (offer, token) =>
@@ -305,7 +305,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                 await Parallel.ForEachAsync(products, new ParallelOptions
                 {
                     CancellationToken = ct,
-                    MaxDegreeOfParallelism = 25
+                    MaxDegreeOfParallelism = 20
                 },
                 async (product, token) =>
                 {
@@ -378,6 +378,8 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                     _logger.LogWarning("Offer not found in Allegro. Deleting from database.");
                     await _offerRepo.DeleteOffer(product.Id, CancellationToken.None);
                     break;
+                case 429:
+                    break;
 
                 default:
                     await _imageRepo.DeleteNotConnectedImages(product.Id, CancellationToken.None);
@@ -440,6 +442,10 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                             await _parameterRepo.UpdateParameter(product.Id, 247835, "JAG", CancellationToken.None);
 
                             _logger.LogInformation("Updated parameter Producent części to 'JAG' for {Code}", product.Code);
+                        }
+                        else if (err.Code == "Code=ConstraintViolationException.ValidProductization")
+                        {
+                            // TODO
                         }
                         else if (err.UserMessage.Contains(@"Podany adres obrazka jest nieprawidłowy."))
                         {
