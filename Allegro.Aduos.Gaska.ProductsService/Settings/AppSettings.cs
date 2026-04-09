@@ -1,4 +1,5 @@
-﻿using AduosSyncServices.Contracts.Settings;
+﻿using AduosSyncServices.Contracts.Data.Enums;
+using AduosSyncServices.Contracts.Settings;
 
 namespace Allegro.Aduos.Gaska.ProductsService.Settings
 {
@@ -9,6 +10,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Settings
         public decimal MinProductPriceNet { get; set; }
         public int LogsExpirationDays { get; set; }
         public int FetchIntervalMinutes { get; set; }
+        public DeliveryMatchMode DeliveryMatchMode { get; set; } = DeliveryMatchMode.Weight;
         public List<DeliverySettings> Deliveries { get; set; } = new List<DeliverySettings>();
     }
 }

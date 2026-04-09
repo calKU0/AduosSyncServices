@@ -5,9 +5,11 @@ using AduosSyncServices.ServicesManager.Resources;
 using AduosSyncServices.ServicesManager.Validation;
 using Microsoft.Extensions.Configuration;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using AduosSyncServices.Contracts.Data.Enums;
 
 namespace AduosSyncServices.ServicesManager
 {
@@ -101,6 +103,7 @@ namespace AduosSyncServices.ServicesManager
             }
 
             _deliveries = section.Get<List<Delivery>>() ?? new List<Delivery>();
+            var matchMode = config.GetValue("AppSettings:DeliveryMatchMode", DeliveryMatchMode.Weight);
 
             var groupBox = new GroupBox
             {
@@ -109,7 +112,7 @@ namespace AduosSyncServices.ServicesManager
             };
 
             _deliveryEditor = new DeliveryEditor();
-            _deliveryEditor.SetDeliveries(_deliveries);
+            _deliveryEditor.SetDeliveries(_deliveries, matchMode);
             groupBox.Content = _deliveryEditor;
             ConfigStackPanel.Children.Add(groupBox);
         }
@@ -162,8 +165,12 @@ namespace AduosSyncServices.ServicesManager
 
                 if (_deliveriesSectionExists)
                 {
+                    valuesToSave["AppSettings:DeliveryMatchMode"] = _deliveryEditor?.GetSelectedMatchMode().ToString() ?? DeliveryMatchMode.Weight.ToString();
                     valuesToSave["AppSettings:Deliveries"] =
-                        JsonSerializer.Serialize(deliveries);
+                        JsonSerializer.Serialize(deliveries, new JsonSerializerOptions
+                        {
+                            Converters = { new JsonStringEnumConverter() }
+                        });
                 }
 
                 if (_marginRangesSectionExists)
@@ -194,8 +201,9 @@ namespace AduosSyncServices.ServicesManager
                 return deliveries;
 
             var inputs = _deliveryEditor.GetInputs();
+            var matchMode = _deliveryEditor.GetSelectedMatchMode();
 
-            var (validated, validationErrors) = DeliveryValidator.Validate(inputs);
+            var (validated, validationErrors) = DeliveryValidator.Validate(matchMode, inputs);
             errors.AddRange(validationErrors);
             return validated;
         }

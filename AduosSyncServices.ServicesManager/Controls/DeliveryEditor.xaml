@@ -5,21 +5,28 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d"
              d:DesignHeight="200" d:DesignWidth="600">
-    <StackPanel Margin="6">
+    <StackPanel Margin="6" Grid.IsSharedSizeScope="True">
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+            <TextBlock Text="Tryb dopasowania cennika:" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="Bold" />
+            <ComboBox x:Name="GlobalMatchModeBox" Width="220" SelectionChanged="GlobalMatchModeBox_SelectionChanged" />
+        </StackPanel>
         <Grid Margin="0,0,0,4">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition />
-                <ColumnDefinition />
-                <ColumnDefinition />
-                <ColumnDefinition />
-                <ColumnDefinition />
-                <ColumnDefinition />
+                <ColumnDefinition Width="Auto" SharedSizeGroup="RuleTypeCol" />
+                <ColumnDefinition Width="Auto" SharedSizeGroup="ThresholdCol" />
+                <ColumnDefinition Width="Auto" SharedSizeGroup="WeightCol" />
+                <ColumnDefinition Width="Auto" SharedSizeGroup="LengthCol" />
+                <ColumnDefinition Width="Auto" SharedSizeGroup="WidthCol" />
+                <ColumnDefinition Width="Auto" SharedSizeGroup="HeightCol" />
+                <ColumnDefinition Width="Auto" SharedSizeGroup="NameCol" />
             </Grid.ColumnDefinitions>
-            <TextBlock Text="Długość" FontWeight="Bold" Margin="2" Grid.Column="0" />
-            <TextBlock Text="Szerokość" FontWeight="Bold" Margin="2" Grid.Column="1" />
-            <TextBlock Text="Wysokość" FontWeight="Bold" Margin="2" Grid.Column="2" />
-            <TextBlock Text="Waga" FontWeight="Bold" Margin="2" Grid.Column="3" />
-            <TextBlock Text="Nazwa" FontWeight="Bold" Margin="2" Grid.Column="4" />
+            <TextBlock Text="Typ towaru" FontWeight="Bold" Margin="2" Grid.Column="0" />
+            <TextBlock x:Name="ThresholdHeader" Text="Próg ceny netto" FontWeight="Bold" Margin="2" Grid.Column="1" />
+            <TextBlock x:Name="WeightHeader" Text="Max Waga" FontWeight="Bold" Margin="2" Grid.Column="2" />
+            <TextBlock x:Name="LengthHeader" Text="Max Długość" FontWeight="Bold" Margin="2" Grid.Column="3" />
+            <TextBlock x:Name="WidthHeader" Text="Max Szerokość" FontWeight="Bold" Margin="2" Grid.Column="4" />
+            <TextBlock x:Name="HeightHeader" Text="Max Wysokość" FontWeight="Bold" Margin="2" Grid.Column="5" />
+            <TextBlock Text="Nazwa" FontWeight="Bold" Margin="2" Grid.Column="6" />
         </Grid>
         <StackPanel x:Name="RowsPanel" />
         <Button x:Name="AddButton" Content="Dodaj dostawę" Margin="0,6,0,0" Click="AddButton_Click" />

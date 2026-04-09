@@ -22,6 +22,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\AduosSyncServices.Contracts\AduosSyncServices.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="Resources\gaska-products-sync-logo.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

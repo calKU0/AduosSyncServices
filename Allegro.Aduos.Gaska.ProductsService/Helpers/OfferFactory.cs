@@ -1,4 +1,5 @@
-﻿using AduosSyncServices.Contracts.DTOs.Allegro;
+﻿using AduosSyncServices.Contracts.Data.Enums;
+using AduosSyncServices.Contracts.DTOs.Allegro;
 using AduosSyncServices.Contracts.Models;
 using AduosSyncServices.Contracts.Settings;
 using Allegro.Aduos.Gaska.ProductsService.Settings;
@@ -91,7 +92,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                 Category = new() { Id = product.DefaultAllegroCategory.ToString() },
                 Delivery = new Delivery
                 {
-                    ShippingRates = new ShippingRates { Name = GetDelivery(product, appSettings.Deliveries) },
+                    ShippingRates = new ShippingRates { Name = GetDelivery(product, appSettings.Deliveries, product.PriceNet, appSettings.DeliveryMatchMode) },
                     HandlingTime = product.DeliveryType == 0
                         ? allegroSettings.AllegroHandlingTime
                         : allegroSettings.AllegroHandlingTimeCustomProducts
@@ -465,45 +466,139 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
             return description;
         }
 
-        private static string GetDelivery(Product product, List<DeliverySettings> deliveries)
+        private static string GetDelivery(Product product, List<DeliverySettings> deliveries, decimal productNetPrice, DeliveryMatchMode matchMode)
         {
             if (deliveries == null || deliveries.Count == 0)
                 return null;
 
-            if (product.DeliveryType == 2)
-            {
-                return deliveries
-                    .OrderByDescending(d => d.Weight)
-                    .ThenByDescending(d => d.Length * d.Width * d.Height)
-                    .First()
-                    .DeliveryName;
-            }
+            var validRules = deliveries
+                .Where(d => !string.IsNullOrWhiteSpace(d.DeliveryName))
+                .ToList();
+
+            if (!validRules.Any())
+                return null;
 
             var productWeight = (decimal)product.Weight;
+            var productLength = GetDimensionCm(product, "Długość");
+            var productWidth = GetDimensionCm(product, "Szerokość");
+            var productHeight = GetDimensionCm(product, "Wysokość");
 
-            var length = GetDimensionCm(product, "Długość");
-            var width = GetDimensionCm(product, "Szerokość");
-            var height = GetDimensionCm(product, "Wysokość");
-
-
-            var matchingDelivery = deliveries
-                .Where(d =>
-                    d.Weight >= productWeight &&
-                    (length == null || d.Length >= length) &&
-                    (width == null || d.Width >= width) &&
-                    (height == null || d.Height >= height))
-                .OrderBy(d => d.Weight)
-                .ThenBy(d => d.Length * d.Width * d.Height) // smallest volume wins
+            var customType2Rule = validRules
+                .Where(r => IsRuleType(r, DeliveryRuleType.CustomType))
                 .FirstOrDefault();
 
-            // Fallback: biggest delivery
-            return matchingDelivery?.DeliveryName
-                ?? deliveries
-                    .OrderByDescending(d => d.Weight)
-                    .ThenByDescending(d => d.Length * d.Width * d.Height)
-                    .First()
-                    .DeliveryName;
+            if (product.DeliveryType == 2 && customType2Rule != null)
+                return customType2Rule.DeliveryName;
+
+            var bulkyRule = validRules
+                .Where(r => IsRuleType(r, DeliveryRuleType.BulkyType))
+                .Where(r => product.DeliveryType == 1)
+                .ToList();
+
+            if (bulkyRule.Any())
+            {
+                var selectedBulky = matchMode == DeliveryMatchMode.Price
+                    ? SelectByPriceThreshold(bulkyRule, productNetPrice)
+                    : SelectByDimensionsAndWeight(bulkyRule, productWeight, productLength, productWidth, productHeight);
+
+                if (selectedBulky != null)
+                    return selectedBulky.DeliveryName;
+            }
+
+            var standardRules = validRules
+                .Where(r => IsRuleType(r, DeliveryRuleType.Standard))
+                .ToList();
+
+            var matchingRule = matchMode == DeliveryMatchMode.Price
+                ? SelectByPriceThreshold(standardRules, productNetPrice)
+                : SelectByDimensionsAndWeight(standardRules, productWeight, productLength, productWidth, productHeight);
+
+            if (matchingRule != null)
+                return matchingRule.DeliveryName;
+
+            return validRules.Select(r => r.DeliveryName)
+                .FirstOrDefault();
         }
+
+        internal static string ResolveDeliveryNameForTests(Product product, List<DeliverySettings> deliveries, decimal productNetPrice, DeliveryMatchMode matchMode)
+        {
+            return GetDelivery(product, deliveries, productNetPrice, matchMode);
+        }
+
+        private static bool IsRuleType(DeliverySettings rule, DeliveryRuleType expectedRuleType)
+        {
+            return rule.RuleType == expectedRuleType;
+        }
+
+        private static bool MatchesNetThreshold(DeliverySettings rule, decimal productNetPrice)
+        {
+            return !rule.NetPriceThreshold.HasValue || productNetPrice >= rule.NetPriceThreshold.Value;
+        }
+
+        private static bool MatchesDimensionsAndWeight(
+            DeliverySettings rule,
+            decimal productWeight,
+            decimal? productLength,
+            decimal? productWidth,
+            decimal? productHeight)
+        {
+            if (rule.Weight <= 0 || rule.Length <= 0 || rule.Width <= 0 || rule.Height <= 0)
+                return false;
+
+            if (productWeight > rule.Weight)
+                return false;
+
+            if (productLength.HasValue && productLength.Value > rule.Length)
+                return false;
+
+            if (productWidth.HasValue && productWidth.Value > rule.Width)
+                return false;
+
+            if (productHeight.HasValue && productHeight.Value > rule.Height)
+                return false;
+
+            return true;
+        }
+
+        private static DeliverySettings SelectByDimensionsAndWeight(
+            IEnumerable<DeliverySettings> rules,
+            decimal productWeight,
+            decimal? productLength,
+            decimal? productWidth,
+            decimal? productHeight)
+        {
+            var list = rules.ToList();
+            var matched = list
+                .Where(r => MatchesDimensionsAndWeight(r, productWeight, productLength, productWidth, productHeight))
+                .OrderBy(r => r.Weight)
+                .ThenBy(r => r.Length * r.Width * r.Height)
+                .FirstOrDefault();
+
+            if (matched != null)
+                return matched;
+
+            return list
+                .OrderByDescending(r => r.Weight)
+                .ThenByDescending(r => r.Length * r.Width * r.Height)
+                .FirstOrDefault();
+        }
+
+        private static DeliverySettings SelectByPriceThreshold(IEnumerable<DeliverySettings> rules, decimal productNetPrice)
+        {
+            var list = rules.ToList();
+            var matched = list
+                .Where(r => MatchesNetThreshold(r, productNetPrice))
+                .OrderByDescending(r => r.NetPriceThreshold ?? 0)
+                .FirstOrDefault();
+
+            if (matched != null)
+                return matched;
+
+            return list
+                .OrderBy(r => r.NetPriceThreshold ?? decimal.MaxValue)
+                .FirstOrDefault();
+        }
+
         private static decimal? GetDimensionCm(Product product, string dimensionName)
         {
             var spec = product.Specifications?
