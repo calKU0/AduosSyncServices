@@ -266,11 +266,11 @@ namespace AduosSyncServices.Infrastructure.Repositories
 
             await connection.ExecuteAsync(
                 new CommandDefinition(
-                    "RolmarCategory_ReplaceByProductId",
+                    "ProductCategories_ReplaceByProductId",
                     new
                     {
                         ProductId = productId,
-                        Items = table.AsTableValuedParameter("dbo.RolmarCategoryType")
+                        Items = table.AsTableValuedParameter("dbo.ProductCategoriesType")
                     },
                     transaction,
                     commandType: CommandType.StoredProcedure,

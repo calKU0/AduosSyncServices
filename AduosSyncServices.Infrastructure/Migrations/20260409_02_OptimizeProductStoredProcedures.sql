@@ -392,7 +392,7 @@ BEGIN
     BEGIN
         INSERT INTO @Result(Id)
         SELECT TOP (1) Id
-        FROM dbo.RolmarProducts
+        FROM dbo.Products
         WHERE Code = @Code
           AND IntegrationCompany = @IntegrationCompany
         ORDER BY Id DESC;

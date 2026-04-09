@@ -78,6 +78,7 @@ public class Worker : BackgroundService
             }
 
             await MeasureStepAsync("Basic product sync", () => gaskaApiService.SyncProducts());
+            await MeasureStepAsync("Detailed product sync", () => gaskaApiService.SyncProductDetails());
             await MeasureStepAsync("Allegro offers sync", () => offerService.SyncAllegroOffers());
             await MeasureStepAsync("Allegro offers details sync", () => offerService.SyncAllegroOffersDetails());
 
