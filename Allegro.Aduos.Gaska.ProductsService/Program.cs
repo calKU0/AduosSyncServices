@@ -2,9 +2,11 @@ using AduosSyncServices.Contracts.Interfaces;
 using AduosSyncServices.Contracts.Settings;
 using AduosSyncServices.Infrastructure.Data;
 using AduosSyncServices.Infrastructure.Logging;
+using AduosSyncServices.Infrastructure.Repositories;
+using AduosSyncServices.Infrastructure.Settings;
 using AduosSyncServices.Infrastructure.Services;
 using Allegro.Aduos.Gaska.ProductsService;
-using Allegro.Aduos.Gaska.ProductsService.Repositories;
+using Allegro.Aduos.Gaska.ProductsService.Constants;
 using Allegro.Aduos.Gaska.ProductsService.Services.Allegro;
 using Allegro.Aduos.Gaska.ProductsService.Services.Gaska.Interfaces;
 using Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService;
@@ -64,9 +66,18 @@ var host = Host.CreateDefaultBuilder(args)
         // Bind configuration
         services.Configure<GaskaApiCredentials>(configuration.GetSection("GaskaApiCredentials"));
         services.Configure<AllegroApiCredentials>(configuration.GetSection("AllegroApiCredentials"));
-        services.Configure<AppSettings>(configuration.GetSection("AppSettings"));
+        var appSettingsSection = configuration.GetSection("AppSettings");
+        services.Configure<AppSettings>(appSettingsSection);
         services.Configure<PriceSettings>(configuration.GetSection("PriceSettings"));
         services.Configure<AllegroSettings>(configuration.GetSection("AllegroSettings"));
+
+        var appSettings = appSettingsSection.Get<AppSettings>() ?? new AppSettings();
+        services.Configure<RepositorySettings>(options =>
+        {
+            options.Company = ServiceConstants.Company;
+            options.Account = ServiceConstants.Account;
+            options.Deliveries = appSettings.Deliveries ?? new List<DeliverySettings>();
+        });
 
         // HttpClients
         services.AddHttpClient<AllegroAuthService>(client =>

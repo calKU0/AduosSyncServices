@@ -275,7 +275,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
 
                         var body = await response.Content.ReadAsStringAsync(token);
 
-                        await LogAllegroResponse(offer.Product, response, body, true);
+                        await LogAllegroResponse(offer.Product, response, body, true, offer.Id);
                     }
                     catch (Exception ex)
                     {
@@ -335,7 +335,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
             }
         }
 
-        private async Task LogAllegroResponse(Product product, HttpResponseMessage response, string body, bool isUpdate = false)
+        private async Task LogAllegroResponse(Product product, HttpResponseMessage response, string body, bool isUpdate = false, string offerId = null)
         {
             var action = isUpdate ? "updated" : "created";
 
@@ -360,7 +360,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                 case 422:
                 case 433:
                     await _imageRepo.DeleteNotConnectedImages(product.Id, CancellationToken.None);
-                    await LogAllegroErrors(product, response, body, isUpdate);
+                    await LogAllegroErrors(product, response, body, isUpdate, offerId);
                     break;
 
                 case 401:
@@ -376,7 +376,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                 case 404:
                     await _imageRepo.DeleteNotConnectedImages(product.Id, CancellationToken.None);
                     _logger.LogWarning("Offer not found in Allegro. Deleting from database.");
-                    await _offerRepo.DeleteOffer(product.Id, CancellationToken.None);
+                    await _offerRepo.DeleteOffer(offerId, CancellationToken.None);
                     break;
                 case 429:
                     break;
@@ -388,7 +388,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
             }
         }
 
-        private async Task LogAllegroErrors(Product product, HttpResponseMessage response, string body, bool isUpdate = false)
+        private async Task LogAllegroErrors(Product product, HttpResponseMessage response, string body, bool isUpdate = false, string offerId = null)
         {
             var action = isUpdate ? "updating" : "creating";
             try
@@ -475,7 +475,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                         else if (err.Code == "OfferNotFoundException" && response.StatusCode == System.Net.HttpStatusCode.NotFound)
                         {
                             _logger.LogWarning("Offer not found in Allegro. Deleting from database.");
-                            await _offerRepo.DeleteOffer(product.Id, CancellationToken.None);
+                            await _offerRepo.DeleteOffer(offerId, CancellationToken.None);
                         }
                         else
                         {

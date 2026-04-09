@@ -1,4 +1,4 @@
-﻿using AduosSyncServices.Contracts.DTOs.Allegro;
+using AduosSyncServices.Contracts.DTOs.Allegro;
 using AduosSyncServices.Contracts.Interfaces;
 using AduosSyncServices.Contracts.Models;
 using AduosSyncServices.Infrastructure.Data;
@@ -6,7 +6,7 @@ using Dapper;
 using System.Data;
 using System.Text.Json;
 
-namespace Allegro.Aduos.Gaska.ProductsService.Repositories
+namespace AduosSyncServices.Infrastructure.Repositories
 {
     public class CategoryRepository : ICategoryRepository
     {
@@ -140,7 +140,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
 
             if (!productCategories.Any()) return null;
 
-            var root = productCategories.Select(c => c.Name).FirstOrDefault(c => c.Contains("Części według rodzaju")) // check
+            var root = productCategories.Select(c => c.Name).FirstOrDefault(c => c.Contains("Części według rodzaju"))
                        ?? productCategories.Select(c => c.Name).First();
 
             if (root == null) return null;
@@ -157,8 +157,6 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
 
             if (stats.CategoryId != 0) return stats.CategoryId;
 
-
-            // Fallback for traktor/kombajn
             var nameLower = root.ToLower();
             if (nameLower.Contains("traktor")) return 305829;
             if (nameLower.Contains("kombajn")) return 319159;

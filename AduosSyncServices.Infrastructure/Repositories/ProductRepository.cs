@@ -1,22 +1,25 @@
-﻿using AduosSyncServices.Contracts.Interfaces;
+using AduosSyncServices.Contracts.Interfaces;
 using AduosSyncServices.Contracts.Models;
 using AduosSyncServices.Infrastructure.Data;
-using Allegro.Aduos.Gaska.ProductsService.Constants;
+using AduosSyncServices.Infrastructure.Settings;
 using Dapper;
+using Microsoft.Extensions.Options;
 using System.Data;
 using System.Text.RegularExpressions;
 
-namespace Allegro.Aduos.Gaska.ProductsService.Repositories
+namespace AduosSyncServices.Infrastructure.Repositories
 {
     public class ProductRepository : IProductRepository
     {
         private readonly DapperContext _context;
-        private readonly ILogger<ProductRepository> _logger;
+        private readonly int _company;
+        private readonly int _account;
 
-        public ProductRepository(DapperContext context, ILogger<ProductRepository> logger)
+        public ProductRepository(DapperContext context, IOptions<RepositorySettings> options)
         {
             _context = context;
-            _logger = logger;
+            _company = (int)options.Value.Company;
+            _account = (int)options.Value.Account;
         }
 
         public async Task<List<Product>> GetProductsForDetailUpdate(int limit, CancellationToken ct)
@@ -24,7 +27,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
             using var conn = _context.CreateConnection();
             return (await conn.QueryAsync<Product>(
                 "Products_GetForDetailUpdate",
-                new { Limit = limit, IntegrationCompany = ServiceConstants.Company },
+                new { Limit = limit, IntegrationCompany = _company },
                 commandType: CommandType.StoredProcedure,
                 commandTimeout: 900)).ToList();
         }
@@ -50,14 +53,14 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
 
                 (await connection.QueryAsync<string>(
                     "SELECT pa.Name FROM ProductApplications pa JOIN Products rp on rp.Id = pa.ProductId WHERE rp.Code = @ProductCode AND pa.ParentID = 0 AND IntegrationCompany = @IntegrationCompany",
-                    new { ProductCode = product.Code, IntegrationCompany = ServiceConstants.Company },
+                    new { ProductCode = product.Code, IntegrationCompany = _company },
                     transaction))
                     .Where(n => !string.IsNullOrWhiteSpace(n))
                     .ToList();
 
                 var substitues = product.Substitutes ?? await connection.ExecuteScalarAsync<string>(
                   "SELECT Substitutes FROM Products WHERE Code = @ProductCode AND NULLIF(Substitutes,'') is not null AND IntegrationCompany = @IntegrationCompany",
-                  new { ProductCode = product.Code, IntegrationCompany = ServiceConstants.Company },
+                  new { ProductCode = product.Code, IntegrationCompany = _company },
                   transaction);
 
                 product.Name = FixName(
@@ -85,7 +88,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
                         Unit = product.Unit,
                         Currency = product.CurrencyPrice,
                         Substitutes = product.Substitutes,
-                        IntegrationCompany = ServiceConstants.Company,
+                        IntegrationCompany = _company,
                         IntegrationId = product.IntegrationId,
                         DeliveryType = product.DeliveryType,
                         PriceNet = product.PriceNet,
@@ -98,7 +101,6 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
 
                 if (product.Specifications?.Any() == true)
                 {
-                    // Replace specifications
                     await connection.ExecuteAsync(
                         "ProductSpecifications_DeleteByProductId",
                         new { ProductId = productId },
@@ -124,7 +126,6 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
 
                 if (product.Categories?.Any() == true)
                 {
-                    // Replace categories
                     await connection.ExecuteAsync(
                         "ProductCategories_DeleteByProductId",
                         new { ProductId = productId },
@@ -148,7 +149,6 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
 
                 if (product.Packages?.Any() == true)
                 {
-                    // Replace packages
                     await connection.ExecuteAsync(
                         "ProductPackages_DeleteByProductId",
                         new { ProductId = productId },
@@ -177,7 +177,6 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
 
                 if (product.Applications?.Any() == true)
                 {
-                    // Replace applications
                     await connection.ExecuteAsync(
                         "ProductApplications_DeleteByProductId",
                         new { ProductId = productId },
@@ -228,7 +227,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
                     {
                         existing = product;
                         existing.Specifications = new List<ProductSpecification>();
-                        existing.Parameters = new List<ProductParameter>(); // puste
+                        existing.Parameters = new List<ProductParameter>();
 
                         productDict.Add(existing.Id, existing);
                     }
@@ -238,7 +237,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
 
                     return existing;
                 },
-                new { IntegrationCompany = ServiceConstants.Company },
+                new { IntegrationCompany = _company },
                 splitOn: "Id",
                 commandTimeout: 900,
                 commandType: CommandType.StoredProcedure
@@ -279,7 +278,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
 
                     return existing;
                 },
-                new { IntegrationCompany = ServiceConstants.Company },
+                new { IntegrationCompany = _company },
                 splitOn: "Id,Id",
                 commandTimeout: 900,
                 commandType: CommandType.StoredProcedure
@@ -292,7 +291,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
         {
             using var connection = _context.CreateConnection();
             connection.Open();
-            var affectedRows = await connection.ExecuteAsync(
+            await connection.ExecuteAsync(
                 "Products_UpdateDefaultCategoryById",
                 new
                 {
@@ -306,7 +305,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
         {
             using var connection = _context.CreateConnection();
             connection.Open();
-            var affectedRows = await connection.ExecuteAsync(
+            await connection.ExecuteAsync(
                 "Products_UpdateDefaultCategoryByCode",
                 new
                 {
@@ -357,7 +356,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
 
                     return existing;
                 },
-                new { MinProductStock = minProductStock, MinProductPrice = minProductPrice, IntegrationCompany = ServiceConstants.Company, Account = ServiceConstants.Account },
+                new { MinProductStock = minProductStock, MinProductPrice = minProductPrice, IntegrationCompany = _company, Account = _account },
                 splitOn: "Id,Id,Id,Id",
                 commandTimeout: 900,
                 commandType: CommandType.StoredProcedure
@@ -368,15 +367,11 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
 
         private string FixName(string name, string code, string? supplierName, List<string>? rootBrands = null, List<string>? crossNumbers = null)
         {
-            // Insert space inside words longer than or equal to 30 characters
             name = Regex.Replace(name, @"\S{30,}", m =>
             {
                 var word = m.Value;
-
-                // Try to find a natural split near position 30
                 int splitPos = -1;
 
-                // look for separator between 20 and 35 chars
                 for (int i = Math.Min(35, word.Length - 1); i >= Math.Max(20, 1); i--)
                 {
                     if (word[i] == '-' || word[i] == '/' || word[i] == '_' || word[i] == '.')
@@ -386,24 +381,21 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
                     }
                 }
 
-                // fallback: hard split at 30
                 if (splitPos == -1)
                     splitPos = 30;
 
                 return word.Substring(0, splitPos) + " " + word.Substring(splitPos);
             });
 
-            // If longer than 75 chars → remove last words until < 75
             var parts = name.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).ToList();
 
             while (name.Length > 75)
             {
-                if (parts.Count <= 1) break; // stop if only 1 word left
+                if (parts.Count <= 1) break;
                 parts.RemoveAt(parts.Count - 1);
                 name = string.Join(" ", parts);
             }
 
-            // Ensure name is at least 3 characters
             if (parts.Count < 3)
             {
                 if (!string.IsNullOrEmpty(code))
@@ -451,7 +443,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
 
             var products = await connection.QueryAsync<Product>(
                 "Products_GetAll",
-                new { IntegrationCompany = ServiceConstants.Company },
+                new { IntegrationCompany = _company },
                 commandTimeout: 900,
                 commandType: CommandType.StoredProcedure);
 

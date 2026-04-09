@@ -13,6 +13,6 @@ namespace AduosSyncServices.Contracts.Interfaces
         Task<List<AllegroOffer>> GetOffersWithoutDetails(CancellationToken ct);
         Task UpsertOfferDetails(List<AllegroOfferDetails.Root> offers, CancellationToken ct);
 
-        Task DeleteOffer(int productId, CancellationToken ct);
+        Task DeleteOffer(string offerId, CancellationToken ct);
     }
 }

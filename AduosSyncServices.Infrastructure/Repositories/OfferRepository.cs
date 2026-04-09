@@ -1,28 +1,29 @@
-﻿using AduosSyncServices.Contracts.DTOs.Allegro;
+using AduosSyncServices.Contracts.DTOs.Allegro;
 using AduosSyncServices.Contracts.Interfaces;
 using AduosSyncServices.Contracts.Models;
 using AduosSyncServices.Contracts.Settings;
 using AduosSyncServices.Infrastructure.Data;
-using Allegro.Aduos.Gaska.ProductsService.Constants;
-using Allegro.Aduos.Gaska.ProductsService.Settings;
+using AduosSyncServices.Infrastructure.Settings;
 using Dapper;
 using Microsoft.Extensions.Options;
 using System.Data;
 using System.Globalization;
 
-namespace Allegro.Aduos.Gaska.ProductsService.Repositories
+namespace AduosSyncServices.Infrastructure.Repositories
 {
     public class OfferRepository : IOfferRepository
     {
         private readonly DapperContext _context;
         private readonly List<DeliverySettings> _deliveries;
-        private readonly ILogger<OfferRepository> _logger;
+        private readonly int _company;
+        private readonly int _account;
 
-        public OfferRepository(ILogger<OfferRepository> logger, DapperContext context, IOptions<AppSettings> options)
+        public OfferRepository(DapperContext context, IOptions<RepositorySettings> options)
         {
-            _logger = logger;
             _context = context;
             _deliveries = options.Value.Deliveries;
+            _company = (int)options.Value.Company;
+            _account = (int)options.Value.Account;
         }
 
         public async Task UpsertOffers(List<Offer> offers, CancellationToken ct)
@@ -54,7 +55,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
 
                 table.Rows.Add(
                     o.Id,
-                    ServiceConstants.Account,
+                    _account,
                     o.Name ?? string.Empty,
                     DBNull.Value,
                     categoryId,
@@ -75,7 +76,6 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
 
             try
             {
-                // ONE database call for all rows
                 await connection.ExecuteAsync(
                     "AllegroOffers_Upsert",
                     new { Offers = table.AsTableValuedParameter("dbo.AllegroOfferType") },
@@ -85,7 +85,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
 
                 transaction.Commit();
             }
-            catch (Exception ex)
+            catch
             {
                 transaction.Rollback();
                 throw;
@@ -113,7 +113,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
                     return new
                     {
                         Id = o.Id,
-                        Account = ServiceConstants.Account,
+                        Account = _account,
                         Name = o.Name ?? string.Empty,
                         CategoryId = categoryId,
                         Price = price,
@@ -137,7 +137,6 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
                     commandType: CommandType.StoredProcedure,
                     commandTimeout: 900);
 
-                // ---- Descriptions ----
                 var descriptions = new List<object>();
                 foreach (var o in offers)
                 {
@@ -171,7 +170,6 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
                         commandTimeout: 900);
                 }
 
-                // ---- Attributes ----
                 var attributes = new List<object>();
                 foreach (var o in offers)
                 {
@@ -202,7 +200,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
 
                 transaction.Commit();
             }
-            catch (Exception ex)
+            catch
             {
                 transaction.Rollback();
                 throw;
@@ -215,7 +213,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
             connection.Open();
             return (await connection.QueryAsync<AllegroOffer>(
                 "AllegroOffers_GetAll",
-                new { Account = ServiceConstants.Account },
+                new { Account = _account },
                 commandType: CommandType.StoredProcedure)).ToList();
         }
 
@@ -237,17 +235,15 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
 
             if (!deliveryNames.Any())
             {
-                _logger.LogInformation("Brak skonfigurowanych dostaw — pomijam pobieranie ofert do aktualizacji.");
                 return new List<AllegroOffer>();
             }
 
             using var connection = _context.CreateConnection();
             connection.Open();
 
-            // Step 1: Get offers, images, and specs in one call
             var command = new CommandDefinition(
                 "AllegroOffers_GetOffersToUpdate",
-                new { DeliveryNames = string.Join(",", deliveryNames), IntegrationCompany = ServiceConstants.Company, Account = ServiceConstants.Account },
+                new { DeliveryNames = string.Join(",", deliveryNames), IntegrationCompany = _company, Account = _account },
                 commandTimeout: 900,
                 cancellationToken: ct,
                 commandType: CommandType.StoredProcedure);
@@ -276,7 +272,6 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
             var allPackages = grid.Read<ProductPackage>().ToList();
             var allParameters = grid.Read<ProductParameter>().ToList();
 
-            // Step 2: Aggregate into product collections
             var imagesLookup = allImages.ToLookup(i => i.ProductId);
             var specsLookup = allSpecs.ToLookup(s => s.ProductId);
             var applicationsLookup = allApplications.ToLookup(a => a.ProductId);
@@ -296,23 +291,15 @@ namespace Allegro.Aduos.Gaska.ProductsService.Repositories
             return offers;
         }
 
-        public async Task DeleteOffer(int productId, CancellationToken ct)
+        public async Task DeleteOffer(string offerId, CancellationToken ct)
         {
             using var connection = _context.CreateConnection();
             connection.Open();
 
-            var code = await connection.ExecuteScalarAsync<string>(
-                "AllegroOffers_DeleteByProductId",
-                new { ProductId = productId },
+            await connection.ExecuteScalarAsync<string>(
+                "AllegroOffers_Delete",
+                new { OfferId = offerId },
                 commandType: CommandType.StoredProcedure);
-
-            if (string.IsNullOrWhiteSpace(code))
-            {
-                _logger.LogWarning("Product with Id {ProductId} not found. Cannot delete offer.", productId);
-                return;
-            }
-
-            _logger.LogInformation("Deleted Allegro offer for product {Code}.", code);
         }
     }
 }

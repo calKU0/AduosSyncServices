@@ -1,4 +1,4 @@
-﻿using AduosSyncServices.Contracts.DTOs.Allegro;
+using AduosSyncServices.Contracts.DTOs.Allegro;
 using AduosSyncServices.Contracts.Interfaces;
 using AduosSyncServices.Contracts.Models;
 using AduosSyncServices.Contracts.Settings;
@@ -7,7 +7,7 @@ using Dapper;
 using Microsoft.Extensions.Options;
 using System.Data;
 
-namespace Allegro.Aduos.Gaska.ProductsService.Repositories
+namespace AduosSyncServices.Infrastructure.Repositories
 {
     public class DbTokenRepository : ITokenRepository
     {

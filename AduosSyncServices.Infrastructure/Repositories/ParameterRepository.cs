@@ -1,10 +1,10 @@
-﻿using AduosSyncServices.Contracts.Interfaces;
+using AduosSyncServices.Contracts.Interfaces;
 using AduosSyncServices.Contracts.Models;
 using AduosSyncServices.Infrastructure.Data;
 using Dapper;
 using System.Data;
 
-namespace Allegro.Aduos.Gaska.ProductsService.Repositories
+namespace AduosSyncServices.Infrastructure.Repositories
 {
     public class ParameterRepository : IParameterRepository
     {
