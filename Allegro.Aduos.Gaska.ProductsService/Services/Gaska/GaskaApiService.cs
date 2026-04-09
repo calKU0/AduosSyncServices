@@ -96,10 +96,13 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
                         break;
                     }
 
+                    List<Product> productsToUpsert = new List<Product>();
                     foreach (var product in apiResponse.Products)
                     {
-                        await _productRepo.UpsertProductAsync(MapToProduct(product), ct);
+                        productsToUpsert.Add(MapToProduct(product));
                     }
+
+                    await _productRepo.UpsertProductsBatchAsync(productsToUpsert, ct);
 
                     _logger.LogInformation("Fetched {ProductCount} products for category {Category} on page {Page}.", apiResponse.Products.Count, categoryId ?? 0, page);
 

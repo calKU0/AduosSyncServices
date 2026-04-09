@@ -37,6 +37,105 @@ namespace AduosSyncServices.Infrastructure.Repositories
             throw new NotImplementedException();
         }
 
+        public async Task UpsertProductsBatchAsync(List<Product> products, CancellationToken ct)
+        {
+            if (products == null || products.Count == 0)
+                return;
+
+            using var connection = _context.CreateConnection();
+            connection.Open();
+
+            var codes = products
+                .Select(p => p.Code)
+                .Where(c => !string.IsNullOrWhiteSpace(c))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var existingRows = (await connection.QueryAsync<(string Code, string? Substitutes, string? RootBrand)>(
+                @"SELECT rp.Code, rp.Substitutes, pa.Name AS RootBrand
+                  FROM Products rp
+                  LEFT JOIN ProductApplications pa ON pa.ProductId = rp.Id AND pa.ParentID = 0
+                  WHERE rp.IntegrationCompany = @IntegrationCompany
+                    AND rp.Code IN @Codes",
+                new { IntegrationCompany = _company, Codes = codes })).ToList();
+
+            var substitutesByCode = existingRows
+                .GroupBy(x => x.Code, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.Substitutes).FirstOrDefault(), StringComparer.OrdinalIgnoreCase);
+
+            var rootBrandsByCode = existingRows
+                .Where(x => !string.IsNullOrWhiteSpace(x.RootBrand))
+                .GroupBy(x => x.Code, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Select(x => x.RootBrand!).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+                    StringComparer.OrdinalIgnoreCase);
+
+            var table = new DataTable();
+            table.Columns.Add("Code", typeof(string));
+            table.Columns.Add("Name", typeof(string));
+            table.Columns.Add("SupplierLogo", typeof(string));
+            table.Columns.Add("SupplierName", typeof(string));
+            table.Columns.Add("Description", typeof(string));
+            table.Columns.Add("CustomerCode", typeof(string));
+            table.Columns.Add("Ean", typeof(string));
+            table.Columns.Add("InStock", typeof(double));
+            table.Columns.Add("Weight", typeof(double));
+            table.Columns.Add("Fits", typeof(string));
+            table.Columns.Add("Unit", typeof(string));
+            table.Columns.Add("CurrencyPrice", typeof(string));
+            table.Columns.Add("Substitutes", typeof(string));
+            table.Columns.Add("IntegrationCompany", typeof(int));
+            table.Columns.Add("IntegrationId", typeof(int));
+            table.Columns.Add("DeliveryType", typeof(int));
+            table.Columns.Add("PriceNet", typeof(decimal));
+            table.Columns.Add("PriceGross", typeof(decimal));
+            table.Columns.Add("Package", typeof(decimal));
+
+            foreach (var product in products)
+            {
+                rootBrandsByCode.TryGetValue(product.Code, out var rootBrands);
+                substitutesByCode.TryGetValue(product.Code, out var existingSubstitutes);
+                var substitutes = product.Substitutes ?? existingSubstitutes;
+
+                product.Name = FixName(
+                    product.Name,
+                    product.Code,
+                    product.SupplierName,
+                    rootBrands,
+                    substitutes?.Split(',').Distinct().ToList());
+
+                table.Rows.Add(
+                    product.Code,
+                    product.Name ?? string.Empty,
+                    product.SupplierLogo ?? (object)DBNull.Value,
+                    product.SupplierName ?? (object)DBNull.Value,
+                    product.Description ?? (object)DBNull.Value,
+                    product.CustomerCode ?? (object)DBNull.Value,
+                    product.Ean ?? (object)DBNull.Value,
+                    Convert.ToDouble(product.InStock),
+                    Convert.ToDouble(product.Weight),
+                    product.Fits ?? (object)DBNull.Value,
+                    product.Unit ?? (object)DBNull.Value,
+                    product.CurrencyPrice ?? (object)DBNull.Value,
+                    product.Substitutes ?? (object)DBNull.Value,
+                    _company,
+                    product.IntegrationId,
+                    product.DeliveryType,
+                    product.PriceNet,
+                    product.PriceGross,
+                    product.Package);
+            }
+
+            await connection.ExecuteAsync(
+                new CommandDefinition(
+                    "Products_UpsertBatch",
+                    new { Products = table.AsTableValuedParameter("dbo.ProductUpsertType") },
+                    commandType: CommandType.StoredProcedure,
+                    commandTimeout: 900,
+                    cancellationToken: ct));
+        }
+
         public async Task<bool> UpsertProductAsync(Product product, CancellationToken ct)
         {
             using var connection = _context.CreateConnection();
@@ -101,103 +200,22 @@ namespace AduosSyncServices.Infrastructure.Repositories
 
                 if (product.Specifications?.Any() == true)
                 {
-                    await connection.ExecuteAsync(
-                        "ProductSpecifications_DeleteByProductId",
-                        new { ProductId = productId },
-                        transaction,
-                        commandType: CommandType.StoredProcedure
-                    );
-
-                    var specs = product.Specifications.Select(s => new
-                    {
-                        ProductId = productId,
-                        s.Name,
-                        s.Value,
-                        s.UnitName
-                    });
-
-                    await connection.ExecuteAsync(
-                        "ProductSpecifications_Insert",
-                        specs,
-                        transaction,
-                        commandType: CommandType.StoredProcedure
-                    );
+                    await ReplaceSpecificationsAsync(connection, transaction, productId, product.Specifications, ct);
                 }
 
                 if (product.Categories?.Any() == true)
                 {
-                    await connection.ExecuteAsync(
-                        "ProductCategories_DeleteByProductId",
-                        new { ProductId = productId },
-                        transaction,
-                        commandType: CommandType.StoredProcedure
-                    );
-
-                    var categories = product.Categories.Select(c => new
-                    {
-                        ProductId = productId,
-                        Name = c.Name
-                    });
-
-                    await connection.ExecuteAsync(
-                        "ProductCategories_Insert",
-                        categories,
-                        transaction,
-                        commandType: CommandType.StoredProcedure
-                    );
+                    await ReplaceCategoriesAsync(connection, transaction, productId, product.Categories, ct);
                 }
 
                 if (product.Packages?.Any() == true)
                 {
-                    await connection.ExecuteAsync(
-                        "ProductPackages_DeleteByProductId",
-                        new { ProductId = productId },
-                        transaction,
-                        commandType: CommandType.StoredProcedure
-                    );
-
-                    var packages = product.Packages.Select(p => new
-                    {
-                        ProductId = productId,
-                        p.PackUnit,
-                        p.PackQty,
-                        p.PackNettWeight,
-                        p.PackGrossWeight,
-                        p.PackEan,
-                        p.PackRequired
-                    });
-
-                    await connection.ExecuteAsync(
-                        "ProductPackages_Insert",
-                        packages,
-                        transaction,
-                        commandType: CommandType.StoredProcedure
-                    );
+                    await ReplacePackagesAsync(connection, transaction, productId, product.Packages, ct);
                 }
 
                 if (product.Applications?.Any() == true)
                 {
-                    await connection.ExecuteAsync(
-                        "ProductApplications_DeleteByProductId",
-                        new { ProductId = productId },
-                        transaction,
-                        commandType: CommandType.StoredProcedure
-                    );
-
-                    var applications = product.Applications.Select(a => new
-                    {
-                        ProductId = productId,
-                        a.ApplicationId,
-                        a.ParentID,
-                        a.Name
-                    });
-
-                    await connection.ExecuteAsync(
-                        "ProductApplications_Insert",
-                        applications,
-                        transaction,
-                        commandType: CommandType.StoredProcedure
-                    );
+                    await ReplaceApplicationsAsync(connection, transaction, productId, product.Applications, ct);
                 }
 
                 transaction.Commit();
@@ -208,6 +226,117 @@ namespace AduosSyncServices.Infrastructure.Repositories
                 transaction.Rollback();
                 throw;
             }
+        }
+
+        private async Task ReplaceSpecificationsAsync(IDbConnection connection, IDbTransaction transaction, int productId, List<ProductSpecification> specifications, CancellationToken ct)
+        {
+            var table = new DataTable();
+            table.Columns.Add("Name", typeof(string));
+            table.Columns.Add("Value", typeof(string));
+            table.Columns.Add("UnitName", typeof(string));
+
+            foreach (var s in specifications)
+            {
+                table.Rows.Add(s.Name ?? string.Empty, s.Value ?? (object)DBNull.Value, s.UnitName ?? (object)DBNull.Value);
+            }
+
+            await connection.ExecuteAsync(
+                new CommandDefinition(
+                    "ProductSpecifications_ReplaceByProductId",
+                    new
+                    {
+                        ProductId = productId,
+                        Items = table.AsTableValuedParameter("dbo.ProductSpecificationType")
+                    },
+                    transaction,
+                    commandType: CommandType.StoredProcedure,
+                    commandTimeout: 900,
+                    cancellationToken: ct));
+        }
+
+        private async Task ReplaceCategoriesAsync(IDbConnection connection, IDbTransaction transaction, int productId, List<ProductCategory> categories, CancellationToken ct)
+        {
+            var table = new DataTable();
+            table.Columns.Add("Name", typeof(string));
+
+            foreach (var c in categories)
+            {
+                table.Rows.Add(c.Name ?? string.Empty);
+            }
+
+            await connection.ExecuteAsync(
+                new CommandDefinition(
+                    "RolmarCategory_ReplaceByProductId",
+                    new
+                    {
+                        ProductId = productId,
+                        Items = table.AsTableValuedParameter("dbo.RolmarCategoryType")
+                    },
+                    transaction,
+                    commandType: CommandType.StoredProcedure,
+                    commandTimeout: 900,
+                    cancellationToken: ct));
+        }
+
+        private async Task ReplacePackagesAsync(IDbConnection connection, IDbTransaction transaction, int productId, List<ProductPackage> packages, CancellationToken ct)
+        {
+            var table = new DataTable();
+            table.Columns.Add("PackUnit", typeof(string));
+            table.Columns.Add("PackQty", typeof(double));
+            table.Columns.Add("PackNettWeight", typeof(double));
+            table.Columns.Add("PackGrossWeight", typeof(double));
+            table.Columns.Add("PackEan", typeof(string));
+            table.Columns.Add("PackRequired", typeof(int));
+
+            foreach (var p in packages)
+            {
+                table.Rows.Add(
+                    p.PackUnit ?? (object)DBNull.Value,
+                    Convert.ToDouble(p.PackQty),
+                    Convert.ToDouble(p.PackNettWeight),
+                    Convert.ToDouble(p.PackGrossWeight),
+                    p.PackEan ?? (object)DBNull.Value,
+                    p.PackRequired);
+            }
+
+            await connection.ExecuteAsync(
+                new CommandDefinition(
+                    "ProductPackages_ReplaceByProductId",
+                    new
+                    {
+                        ProductId = productId,
+                        Items = table.AsTableValuedParameter("dbo.ProductPackageType")
+                    },
+                    transaction,
+                    commandType: CommandType.StoredProcedure,
+                    commandTimeout: 900,
+                    cancellationToken: ct));
+        }
+
+        private async Task ReplaceApplicationsAsync(IDbConnection connection, IDbTransaction transaction, int productId, List<ProductApplication> applications, CancellationToken ct)
+        {
+            var table = new DataTable();
+            table.Columns.Add("ApplicationId", typeof(int));
+            table.Columns.Add("ParentID", typeof(int));
+            table.Columns.Add("Name", typeof(string));
+
+            foreach (var a in applications)
+            {
+                table.Rows.Add(a.ApplicationId, a.ParentID, a.Name ?? (object)DBNull.Value);
+            }
+
+            await connection.ExecuteAsync(
+                new CommandDefinition(
+                    "ProductApplications_ReplaceByProductId",
+                    new
+                    {
+                        ProductId = productId,
+                        Items = table.AsTableValuedParameter("dbo.ProductApplicationType")
+                    },
+                    transaction,
+                    commandType: CommandType.StoredProcedure,
+                    commandTimeout: 900,
+                    cancellationToken: ct));
         }
 
         public async Task<List<Product>> GetProductsWithoutDefaultCategory(CancellationToken ct)
