@@ -37,6 +37,7 @@ namespace AduosSyncServices.ServicesManager
 
             try
             {
+                _isConfigLoading = true;
                 var config = LoadAppSettings(_selectedService.ExternalConfigPath);
 
                 ConfigStackPanel.Children.Clear();
@@ -85,10 +86,15 @@ namespace AduosSyncServices.ServicesManager
                 ConfigStackPanel.Children.Add(saveButton);
 
                 ConfigViewContainer.Visibility = Visibility.Visible;
+                _isConfigDirty = false;
             }
             catch (Exception ex)
             {
                 _dialogService.ShowError(string.Format(UiMessages.ConfigLoadFailed, ex.Message));
+            }
+            finally
+            {
+                _isConfigLoading = false;
             }
         }
 
@@ -147,10 +153,16 @@ namespace AduosSyncServices.ServicesManager
 
         private void BtnSaveConfig_Click(object sender, RoutedEventArgs e)
         {
-            if (_selectedService == null) return;
+            SaveCurrentConfig(showSuccessMessage: true);
+        }
+
+        private bool SaveCurrentConfig(bool showSuccessMessage)
+        {
+            if (_selectedService == null) return true;
 
             try
             {
+                _isConfigSaving = true;
                 var errors = new List<string>();
 
                 var (valuesToSave, fieldErrors) = _configFieldValueCollector
@@ -161,7 +173,7 @@ namespace AduosSyncServices.ServicesManager
                 var marginRanges = BuildMarginRanges(errors);
 
                 if (!TryShowValidationErrors(errors))
-                    return;
+                    return false;
 
                 if (_deliveriesSectionExists)
                 {
@@ -181,12 +193,45 @@ namespace AduosSyncServices.ServicesManager
 
                 SaveAppSettings(_selectedService.ExternalConfigPath, valuesToSave);
 
-                _dialogService.ShowInfo(UiMessages.ConfigSaved);
+                _isConfigDirty = false;
+
+                if (showSuccessMessage)
+                    _dialogService.ShowInfo(UiMessages.ConfigSaved);
+
+                return true;
             }
             catch (Exception ex)
             {
                 _dialogService.ShowError(string.Format(UiMessages.ConfigSaveFailed, ex.Message));
+                return false;
             }
+            finally
+            {
+                _isConfigSaving = false;
+            }
+        }
+
+        private bool TryHandleUnsavedConfigChanges()
+        {
+            if (!_isConfigDirty)
+                return true;
+
+            var result = MessageBox.Show(
+                "Masz niezapisane zmiany. Czy chcesz je zapisać?",
+                "Niezapisane zmiany",
+                MessageBoxButton.YesNoCancel,
+                MessageBoxImage.Warning);
+
+            if (result == MessageBoxResult.Cancel)
+                return false;
+
+            if (result == MessageBoxResult.No)
+            {
+                _isConfigDirty = false;
+                return true;
+            }
+
+            return SaveCurrentConfig(showSuccessMessage: false);
         }
 
 

@@ -9,6 +9,7 @@ using System.IO;
 using System.ServiceProcess;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Threading;
 
 namespace AduosSyncServices.ServicesManager
@@ -53,6 +54,9 @@ namespace AduosSyncServices.ServicesManager
         private readonly ConfigFieldUiBuilder _configFieldUiBuilder = new();
         private readonly ServiceCatalogService _serviceCatalogService = new();
         private readonly ConfigFieldValueCollector _configFieldValueCollector = new();
+        private bool _isConfigDirty;
+        private bool _isConfigLoading;
+        private bool _isConfigSaving;
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -65,6 +69,7 @@ namespace AduosSyncServices.ServicesManager
             CbAccountSelector.ItemsSource = AvailableAccounts;
             CbAccountSelectorOverlay.ItemsSource = AvailableAccounts;
             InitializeCommands();
+            InitializeConfigDirtyTracking();
 
             _logReloadDebounce = new DispatcherTimer
             {
@@ -86,6 +91,12 @@ namespace AduosSyncServices.ServicesManager
                 if (_selectedAccount == value)
                     return;
 
+                if (!TryHandleUnsavedConfigChanges())
+                {
+                    OnPropertyChanged(nameof(SelectedAccount));
+                    return;
+                }
+
                 _selectedAccount = value;
                 OnPropertyChanged(nameof(SelectedAccount));
 
@@ -101,6 +112,12 @@ namespace AduosSyncServices.ServicesManager
             {
                 if (_selectedService == value)
                     return;
+
+                if (!TryHandleUnsavedConfigChanges())
+                {
+                    OnPropertyChanged(nameof(SelectedService));
+                    return;
+                }
 
                 _selectedService = value;
                 OnPropertyChanged(nameof(SelectedService));
@@ -160,6 +177,33 @@ namespace AduosSyncServices.ServicesManager
                 OnPropertyChanged(nameof(ShowOnlyWarningsAndErrors));
                 _ = HandleShowOnlyWarningsChangedAsync();
             }
+        }
+
+        protected override void OnClosing(CancelEventArgs e)
+        {
+            if (!TryHandleUnsavedConfigChanges())
+            {
+                e.Cancel = true;
+                return;
+            }
+
+            base.OnClosing(e);
+        }
+
+        private void InitializeConfigDirtyTracking()
+        {
+            ConfigStackPanel.AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler((_, _) => MarkConfigDirty()));
+            ConfigStackPanel.AddHandler(Selector.SelectionChangedEvent, new SelectionChangedEventHandler((_, _) => MarkConfigDirty()));
+            ConfigStackPanel.AddHandler(ToggleButton.CheckedEvent, new RoutedEventHandler((_, _) => MarkConfigDirty()));
+            ConfigStackPanel.AddHandler(ToggleButton.UncheckedEvent, new RoutedEventHandler((_, _) => MarkConfigDirty()));
+        }
+
+        private void MarkConfigDirty()
+        {
+            if (_isConfigLoading || _isConfigSaving || ConfigViewContainer.Visibility != Visibility.Visible)
+                return;
+
+            _isConfigDirty = true;
         }
 
     }

@@ -26,6 +26,12 @@ namespace AduosSyncServices.ServicesManager
 
         private async Task ShowLogsAsync()
         {
+            if (!TryHandleUnsavedConfigChanges())
+            {
+                BtnShowConfig.IsChecked = true;
+                return;
+            }
+
             await ShowLogsViewAsync();
         }
 
