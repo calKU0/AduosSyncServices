@@ -11,16 +11,16 @@ namespace AduosSyncServices.Contracts.Settings
         PT24H,
 
         [Description("2 dni")]
-        PT2D,
+        P2D,
 
         [Description("3 dni")]
-        PT3D,
+        P3D,
 
         [Description("4 dni")]
-        PT4D,
+        P4D,
 
         [Description("5 dni")]
-        PT5D,
+        P5D,
 
         [Description("7 dni")]
         P7D,

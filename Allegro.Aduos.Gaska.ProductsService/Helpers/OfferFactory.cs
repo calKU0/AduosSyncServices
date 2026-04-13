@@ -66,7 +66,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
         {
             var price = CalculatePrice(product, priceSettings, quantity);
             var available = CalculateAvailableStock(stockOverride, product.InStock, quantity);
-            var selectedDelivery = GetDeliveryRule(product, appSettings.Deliveries, product.PriceNet, appSettings.DeliveryMatchMode);
+            var selectedDelivery = GetDeliveryRule(product, appSettings.Deliveries, appSettings.DeliveryMatchMode);
 
             var offer = new ProductOfferRequest
             {
@@ -465,7 +465,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
             return description;
         }
 
-        private static DeliverySettings? GetDeliveryRule(Product product, List<DeliverySettings> deliveries, decimal productNetPrice, DeliveryMatchMode matchMode)
+        private static DeliverySettings? GetDeliveryRule(Product product, List<DeliverySettings> deliveries, DeliveryMatchMode matchMode)
         {
             if (deliveries == null || deliveries.Count == 0)
                 return null;
@@ -497,7 +497,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
             if (bulkyRule.Any())
             {
                 var selectedBulky = matchMode == DeliveryMatchMode.Price
-                    ? SelectByPriceThreshold(bulkyRule, productNetPrice)
+                    ? SelectByPriceThreshold(bulkyRule, product.PriceNet)
                     : SelectByDimensionsAndWeight(bulkyRule, productWeight, productLength, productWidth, productHeight);
 
                 if (selectedBulky != null)
@@ -509,7 +509,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                 .ToList();
 
             var matchingRule = matchMode == DeliveryMatchMode.Price
-                ? SelectByPriceThreshold(standardRules, productNetPrice)
+                ? SelectByPriceThreshold(standardRules, product.PriceNet)
                 : SelectByDimensionsAndWeight(standardRules, productWeight, productLength, productWidth, productHeight);
 
             if (matchingRule != null)
@@ -519,14 +519,14 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                 .FirstOrDefault();
         }
 
-        internal static string ResolveDeliveryNameForTests(Product product, List<DeliverySettings> deliveries, decimal productNetPrice, DeliveryMatchMode matchMode)
+        internal static string? ResolveDeliveryNameForTests(Product product, List<DeliverySettings> deliveries, DeliveryMatchMode matchMode)
         {
-            return GetDeliveryRule(product, deliveries, productNetPrice, matchMode)?.DeliveryName;
+            return GetDeliveryRule(product, deliveries, matchMode)?.DeliveryName;
         }
 
-        internal static string? ResolveHandlingTimeForTests(Product product, List<DeliverySettings> deliveries, decimal productNetPrice, DeliveryMatchMode matchMode)
+        internal static string? ResolveHandlingTimeForTests(Product product, List<DeliverySettings> deliveries, DeliveryMatchMode matchMode)
         {
-            return GetDeliveryRule(product, deliveries, productNetPrice, matchMode)?.HandlingTime.ToString();
+            return GetDeliveryRule(product, deliveries, matchMode)?.HandlingTime.ToString();
         }
 
         private static bool IsRuleType(DeliverySettings rule, DeliveryRuleType expectedRuleType)
