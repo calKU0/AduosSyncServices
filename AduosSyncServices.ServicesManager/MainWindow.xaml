@@ -1,7 +1,7 @@
 ﻿<Window x:Class="AduosSyncServices.ServicesManager.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Menedżer serwisów synchronizacji" Height="800" Width="1300" Loaded="Window_Loaded">
+        Title="Menedżer serwisów synchronizacji" Height="800" Width="1400" Loaded="Window_Loaded">
     <Window.Resources>
         <!-- Styles -->
         <Style x:Key="NavButtonStyle" TargetType="Button">

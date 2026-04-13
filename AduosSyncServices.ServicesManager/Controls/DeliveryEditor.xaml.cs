@@ -16,9 +16,10 @@ namespace AduosSyncServices.ServicesManager.Controls
 {
     public partial class DeliveryEditor : UserControl
     {
-        private readonly List<(ComboBox RuleType, TextBox NetPriceThreshold, TextBox Weight, TextBox Length, TextBox Width, TextBox Height, TextBox Name)> _rows = new();
+        private readonly List<(ComboBox RuleType, TextBox NetPriceThreshold, TextBox Weight, TextBox Length, TextBox Width, TextBox Height, TextBox Name, ComboBox HandlingTime)> _rows = new();
         private static readonly List<EnumOption<DeliveryMatchMode>> MatchModes = GetEnumOptions<DeliveryMatchMode>();
         private static readonly List<EnumOption<DeliveryRuleType>> RuleTypes = GetEnumOptions<DeliveryRuleType>();
+        private static readonly List<EnumOption<DeliveryHandlingTime>> HandlingTimes = GetEnumOptions<DeliveryHandlingTime>();
         private DeliveryMatchMode _globalMatchMode = DeliveryMatchMode.Weight;
 
         public DeliveryEditor()
@@ -50,11 +51,12 @@ namespace AduosSyncServices.ServicesManager.Controls
             return (_globalMatchMode);
         }
 
-        public IReadOnlyList<(string RuleType, string NetPriceThreshold, string Weight, string Length, string Width, string Height, string Name)> GetInputs()
+        public IReadOnlyList<(string RuleType, string HandlingTime, string NetPriceThreshold, string Weight, string Length, string Width, string Height, string Name)> GetInputs()
         {
             return _rows
                 .Select(r => (
                     ((r.RuleType.SelectedItem as EnumOption<DeliveryRuleType>)?.Value ?? DeliveryRuleType.Standard).ToString(),
+                    ((r.HandlingTime.SelectedItem as EnumOption<DeliveryHandlingTime>)?.Value ?? DeliveryHandlingTime.PT24H).ToString(),
                     r.NetPriceThreshold.Text,
                     r.Weight.Text,
                     r.Length.Text,
@@ -80,6 +82,7 @@ namespace AduosSyncServices.ServicesManager.Controls
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, SharedSizeGroup = "WidthCol" });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, SharedSizeGroup = "HeightCol" });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, SharedSizeGroup = "NameCol" });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, SharedSizeGroup = "HandlingTimeCol" });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             var ruleTypeBox = new ComboBox
@@ -98,6 +101,15 @@ namespace AduosSyncServices.ServicesManager.Controls
             var widthBox = new TextBox { Text = delivery.Width > 0 ? delivery.Width.ToString() : string.Empty, Margin = new Thickness(2), Width = 90 };
             var heightBox = new TextBox { Text = delivery.Height > 0 ? delivery.Height.ToString() : string.Empty, Margin = new Thickness(2), Width = 90 };
             var nameBox = new TextBox { Text = delivery.DeliveryName, Margin = new Thickness(2), Width = 260 };
+            var handlingTimeBox = new ComboBox
+            {
+                Margin = new Thickness(2),
+                Width = 170,
+                ItemsSource = HandlingTimes,
+                DisplayMemberPath = nameof(EnumOption<DeliveryHandlingTime>.Display)
+            };
+            handlingTimeBox.SelectedItem = HandlingTimes.FirstOrDefault(h => h.Value == delivery.HandlingTime)
+                ?? HandlingTimes.First(h => h.Value == DeliveryHandlingTime.PT24H);
 
             Grid.SetColumn(ruleTypeBox, 0);
             Grid.SetColumn(netPriceThresholdBox, 1);
@@ -106,6 +118,7 @@ namespace AduosSyncServices.ServicesManager.Controls
             Grid.SetColumn(widthBox, 4);
             Grid.SetColumn(heightBox, 5);
             Grid.SetColumn(nameBox, 6);
+            Grid.SetColumn(handlingTimeBox, 7);
 
             var removeBtn = new Button
             {
@@ -119,10 +132,10 @@ namespace AduosSyncServices.ServicesManager.Controls
             removeBtn.Click += (_, _) =>
             {
                 RowsPanel.Children.Remove(grid);
-                _rows.Remove((ruleTypeBox, netPriceThresholdBox, weightBox, lengthBox, widthBox, heightBox, nameBox));
+                _rows.Remove((ruleTypeBox, netPriceThresholdBox, weightBox, lengthBox, widthBox, heightBox, nameBox, handlingTimeBox));
             };
 
-            Grid.SetColumn(removeBtn, 7);
+            Grid.SetColumn(removeBtn, 8);
 
             grid.Children.Add(ruleTypeBox);
             grid.Children.Add(netPriceThresholdBox);
@@ -131,10 +144,11 @@ namespace AduosSyncServices.ServicesManager.Controls
             grid.Children.Add(widthBox);
             grid.Children.Add(heightBox);
             grid.Children.Add(nameBox);
+            grid.Children.Add(handlingTimeBox);
             grid.Children.Add(removeBtn);
 
             RowsPanel.Children.Add(grid);
-            _rows.Add((ruleTypeBox, netPriceThresholdBox, weightBox, lengthBox, widthBox, heightBox, nameBox));
+            _rows.Add((ruleTypeBox, netPriceThresholdBox, weightBox, lengthBox, widthBox, heightBox, nameBox, handlingTimeBox));
             ApplyModeVisibility(netPriceThresholdBox, weightBox, lengthBox, widthBox, heightBox);
         }
 
@@ -189,6 +203,10 @@ namespace AduosSyncServices.ServicesManager.Controls
             return description?.Description ?? value.ToString();
         }
 
-        private sealed record EnumOption<TEnum>(TEnum Value, string Description) where TEnum : struct, Enum;
+        private sealed record EnumOption<TEnum>(TEnum Value, string Description)
+            where TEnum : struct, Enum
+        {
+            public string Display => $"{Description} ({Value})";
+        }
     }
 }

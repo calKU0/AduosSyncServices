@@ -99,8 +99,6 @@ public class OfferFactoryPricingCalculationTests
     {
         return new AllegroSettings
         {
-            AllegroHandlingTime = "P1D",
-            AllegroHandlingTimeCustomProducts = "P2D",
             AllegroSafetyMeasures = "Safe",
             AllegroWarranty = "Warranty",
             AllegroReturnPolicy = "Returns",

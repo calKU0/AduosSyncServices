@@ -1,3 +1,4 @@
+using AduosSyncServices.Contracts.Data.Enums;
 using AduosSyncServices.ServicesManager.Controls;
 using AduosSyncServices.ServicesManager.Helpers;
 using AduosSyncServices.ServicesManager.Models;
@@ -9,7 +10,6 @@ using System.Text.Json.Serialization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using AduosSyncServices.Contracts.Data.Enums;
 
 namespace AduosSyncServices.ServicesManager
 {

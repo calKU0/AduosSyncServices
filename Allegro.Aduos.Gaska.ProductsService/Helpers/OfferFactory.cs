@@ -66,6 +66,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
         {
             var price = CalculatePrice(product, priceSettings, quantity);
             var available = CalculateAvailableStock(stockOverride, product.InStock, quantity);
+            var selectedDelivery = GetDeliveryRule(product, appSettings.Deliveries, product.PriceNet, appSettings.DeliveryMatchMode);
 
             var offer = new ProductOfferRequest
             {
@@ -92,10 +93,8 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                 Category = new() { Id = product.DefaultAllegroCategory.ToString() },
                 Delivery = new Delivery
                 {
-                    ShippingRates = new ShippingRates { Name = GetDelivery(product, appSettings.Deliveries, product.PriceNet, appSettings.DeliveryMatchMode) },
-                    HandlingTime = product.DeliveryType == 0
-                        ? allegroSettings.AllegroHandlingTime
-                        : allegroSettings.AllegroHandlingTimeCustomProducts
+                    ShippingRates = new ShippingRates { Name = selectedDelivery?.DeliveryName },
+                    HandlingTime = selectedDelivery?.HandlingTime.ToString()
                 },
                 TaxSettings = new()
                 {
@@ -466,7 +465,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
             return description;
         }
 
-        private static string GetDelivery(Product product, List<DeliverySettings> deliveries, decimal productNetPrice, DeliveryMatchMode matchMode)
+        private static DeliverySettings? GetDeliveryRule(Product product, List<DeliverySettings> deliveries, decimal productNetPrice, DeliveryMatchMode matchMode)
         {
             if (deliveries == null || deliveries.Count == 0)
                 return null;
@@ -488,7 +487,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                 .FirstOrDefault();
 
             if (product.DeliveryType == 2 && customType2Rule != null)
-                return customType2Rule.DeliveryName;
+                return customType2Rule;
 
             var bulkyRule = validRules
                 .Where(r => IsRuleType(r, DeliveryRuleType.BulkyType))
@@ -502,7 +501,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                     : SelectByDimensionsAndWeight(bulkyRule, productWeight, productLength, productWidth, productHeight);
 
                 if (selectedBulky != null)
-                    return selectedBulky.DeliveryName;
+                    return selectedBulky;
             }
 
             var standardRules = validRules
@@ -514,15 +513,20 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                 : SelectByDimensionsAndWeight(standardRules, productWeight, productLength, productWidth, productHeight);
 
             if (matchingRule != null)
-                return matchingRule.DeliveryName;
+                return matchingRule;
 
-            return validRules.Select(r => r.DeliveryName)
+            return validRules
                 .FirstOrDefault();
         }
 
         internal static string ResolveDeliveryNameForTests(Product product, List<DeliverySettings> deliveries, decimal productNetPrice, DeliveryMatchMode matchMode)
         {
-            return GetDelivery(product, deliveries, productNetPrice, matchMode);
+            return GetDeliveryRule(product, deliveries, productNetPrice, matchMode)?.DeliveryName;
+        }
+
+        internal static string? ResolveHandlingTimeForTests(Product product, List<DeliverySettings> deliveries, decimal productNetPrice, DeliveryMatchMode matchMode)
+        {
+            return GetDeliveryRule(product, deliveries, productNetPrice, matchMode)?.HandlingTime.ToString();
         }
 
         private static bool IsRuleType(DeliverySettings rule, DeliveryRuleType expectedRuleType)

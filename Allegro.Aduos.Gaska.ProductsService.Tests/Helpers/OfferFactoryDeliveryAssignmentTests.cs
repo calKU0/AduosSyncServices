@@ -14,7 +14,7 @@ public class OfferFactoryDeliveryAssignmentTests
         var product = CreateProduct(deliveryType: 2, weight: 12, length: 40, width: 20, height: 10);
         var deliveries = new List<DeliverySettings>
         {
-            new() { RuleType = DeliveryRuleType.CustomType, DeliveryName = "CUSTOM" },
+            new() { RuleType = DeliveryRuleType.CustomType, DeliveryName = "CUSTOM", HandlingTime = DeliveryHandlingTime.PT2D },
             new() { RuleType = DeliveryRuleType.Standard, NetPriceThreshold = 0, DeliveryName = "STANDARD" },
             new() { RuleType = DeliveryRuleType.BulkyType, NetPriceThreshold = 0, DeliveryName = "BULKY" }
         };
@@ -22,6 +22,23 @@ public class OfferFactoryDeliveryAssignmentTests
         var result = OfferFactory.ResolveDeliveryNameForTests(product, deliveries, product.PriceNet, DeliveryMatchMode.Price);
 
         Assert.Equal("CUSTOM", result);
+    }
+
+    [Fact]
+    public void ResolveHandlingTimeForTests_ReturnsHandlingTime_FromMatchedDeliveryRule()
+    {
+        var product = CreateProduct(deliveryType: 0, weight: 8, length: 30, width: 20, height: 10, priceNet: 850);
+        var deliveries = new List<DeliverySettings>
+        {
+            new() { RuleType = DeliveryRuleType.CustomType, DeliveryName = "CUSTOM", HandlingTime = DeliveryHandlingTime.PT5D },
+            new() { RuleType = DeliveryRuleType.BulkyType, NetPriceThreshold = 0, DeliveryName = "BULKY", HandlingTime = DeliveryHandlingTime.P14D },
+            new() { RuleType = DeliveryRuleType.Standard, NetPriceThreshold = 0, DeliveryName = "STANDARD-0", HandlingTime = DeliveryHandlingTime.PT24H },
+            new() { RuleType = DeliveryRuleType.Standard, NetPriceThreshold = 800, DeliveryName = "STANDARD-800", HandlingTime = DeliveryHandlingTime.PT3D }
+        };
+
+        var result = OfferFactory.ResolveHandlingTimeForTests(product, deliveries, product.PriceNet, DeliveryMatchMode.Price);
+
+        Assert.Equal("PT3D", result);
     }
 
     [Fact]

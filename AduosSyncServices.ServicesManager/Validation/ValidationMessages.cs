@@ -5,6 +5,7 @@ namespace AduosSyncServices.ServicesManager.Validation
         public const string DeliveryInvalidNumbers = "Pola liczbowe reguły dostawy muszą być poprawnymi liczbami.";
         public const string DeliveryInvalidMatchMode = "Tryb dopasowania dostawy jest nieprawidłowy.";
         public const string DeliveryInvalidRuleType = "Typ reguły dostawy jest nieprawidłowy.";
+        public const string DeliveryInvalidHandlingTime = "Czas realizacji dla reguły dostawy jest nieprawidłowy.";
         public const string DeliveryNetPriceThresholdNonPositive = "Próg ceny netto musi być większy od zera.";
         public const string DeliveryMissingNetPriceThreshold = "Dla tej reguły podaj próg ceny netto.";
         public const string DeliveryWeightRuleRequiresWeight = "W trybie Po wymiarach i wadze typy towarów Standardowe, Niestandardowe i Gabarytowe wymagają podanej wagi.";

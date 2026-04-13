@@ -2,8 +2,6 @@
 {
     public class AllegroSettings
     {
-        public string AllegroHandlingTime { get; set; } = string.Empty;
-        public string AllegroHandlingTimeCustomProducts { get; set; } = string.Empty;
         public string AllegroSafetyMeasures { get; set; } = string.Empty;
         public string AllegroWarranty { get; set; } = string.Empty;
         public string AllegroReturnPolicy { get; set; } = string.Empty;

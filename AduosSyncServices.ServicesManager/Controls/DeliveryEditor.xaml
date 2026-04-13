@@ -19,6 +19,7 @@
                 <ColumnDefinition Width="Auto" SharedSizeGroup="WidthCol" />
                 <ColumnDefinition Width="Auto" SharedSizeGroup="HeightCol" />
                 <ColumnDefinition Width="Auto" SharedSizeGroup="NameCol" />
+                <ColumnDefinition Width="Auto" SharedSizeGroup="HandlingTimeCol" />
             </Grid.ColumnDefinitions>
             <TextBlock Text="Typ towaru" FontWeight="Bold" Margin="2" Grid.Column="0" />
             <TextBlock x:Name="ThresholdHeader" Text="Próg ceny netto" FontWeight="Bold" Margin="2" Grid.Column="1" />
@@ -27,6 +28,7 @@
             <TextBlock x:Name="WidthHeader" Text="Max Szerokość" FontWeight="Bold" Margin="2" Grid.Column="4" />
             <TextBlock x:Name="HeightHeader" Text="Max Wysokość" FontWeight="Bold" Margin="2" Grid.Column="5" />
             <TextBlock Text="Nazwa" FontWeight="Bold" Margin="2" Grid.Column="6" />
+            <TextBlock Text="Czas realizacji" FontWeight="Bold" Margin="2" Grid.Column="7" />
         </Grid>
         <StackPanel x:Name="RowsPanel" />
         <Button x:Name="AddButton" Content="Dodaj dostawę" Margin="0,6,0,0" Click="AddButton_Click" />

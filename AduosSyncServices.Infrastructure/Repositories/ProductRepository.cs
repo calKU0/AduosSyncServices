@@ -42,10 +42,24 @@ namespace AduosSyncServices.Infrastructure.Repositories
             if (products == null || products.Count == 0)
                 return;
 
+            var productsToUpsert = products
+                .Where(p => !string.IsNullOrWhiteSpace(p.Code))
+                .GroupBy(p => p.Code.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.Last())
+                .ToList();
+
+            foreach (var product in productsToUpsert)
+            {
+                product.Code = product.Code.Trim();
+            }
+
+            if (productsToUpsert.Count == 0)
+                return;
+
             using var connection = _context.CreateConnection();
             connection.Open();
 
-            var codes = products
+            var codes = productsToUpsert
                 .Select(p => p.Code)
                 .Where(c => !string.IsNullOrWhiteSpace(c))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -92,7 +106,7 @@ namespace AduosSyncServices.Infrastructure.Repositories
             table.Columns.Add("PriceGross", typeof(decimal));
             table.Columns.Add("Package", typeof(decimal));
 
-            foreach (var product in products)
+            foreach (var product in productsToUpsert)
             {
                 rootBrandsByCode.TryGetValue(product.Code, out var rootBrands);
                 substitutesByCode.TryGetValue(product.Code, out var existingSubstitutes);
@@ -118,7 +132,7 @@ namespace AduosSyncServices.Infrastructure.Repositories
                     product.Fits ?? (object)DBNull.Value,
                     product.Unit ?? (object)DBNull.Value,
                     product.CurrencyPrice ?? (object)DBNull.Value,
-                    product.Substitutes ?? (object)DBNull.Value,
+                    substitutes ?? (object)DBNull.Value,
                     _company,
                     product.IntegrationId,
                     product.DeliveryType,
@@ -496,6 +510,10 @@ namespace AduosSyncServices.Infrastructure.Repositories
 
         private string FixName(string name, string code, string? supplierName, List<string>? rootBrands = null, List<string>? crossNumbers = null)
         {
+            name = NormalizeNameValue(name);
+            code = NormalizeNameValue(code);
+            supplierName = NormalizeNameValue(supplierName);
+
             name = Regex.Replace(name, @"\S{30,}", m =>
             {
                 var word = m.Value;
@@ -545,7 +563,21 @@ namespace AduosSyncServices.Infrastructure.Repositories
                 name = string.Join(" ", parts);
             }
 
-            return name.ToUpper();
+            return NormalizeNameValue(name).ToUpperInvariant();
+        }
+
+        private static string NormalizeNameValue(string? input)
+        {
+            if (string.IsNullOrWhiteSpace(input))
+                return string.Empty;
+
+            var noControls = new string(input
+                .Select(c => char.IsControl(c) ? ' ' : c)
+                .ToArray());
+
+            var noInvalidChars = Regex.Replace(noControls, @"[^\p{L}\p{N}\s\-\._/,+]", " ");
+
+            return Regex.Replace(noInvalidChars, @"\s+", " ").Trim();
         }
 
         public async Task UpdateCompatibilitySet(int productId, bool value, CancellationToken ct)

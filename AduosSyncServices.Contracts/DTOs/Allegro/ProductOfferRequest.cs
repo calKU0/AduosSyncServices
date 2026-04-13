@@ -13,7 +13,7 @@ namespace AduosSyncServices.Contracts.DTOs.Allegro
         public Delivery Delivery { get; set; }
         public Publication Publication { get; set; }
         public AdditionalMarketplaces AdditionalMarketplaces { get; set; }
-        public CompatibilityList CompatibilityList { get; set; }
+        public CompatibilityList? CompatibilityList { get; set; }
         public string Language { get; set; }
         public Category Category { get; set; }
         public List<Parameter> Parameters { get; set; }

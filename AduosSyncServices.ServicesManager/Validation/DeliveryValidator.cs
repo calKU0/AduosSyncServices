@@ -9,7 +9,7 @@ namespace AduosSyncServices.ServicesManager.Validation
     {
         public static (List<Delivery> Deliveries, List<string> Errors) Validate(
             DeliveryMatchMode matchMode,
-            IEnumerable<(string RuleType, string NetPriceThreshold, string Weight, string Length, string Width, string Height, string Name)> inputs)
+            IEnumerable<(string RuleType, string HandlingTime, string NetPriceThreshold, string Weight, string Length, string Width, string Height, string Name)> inputs)
         {
             var deliveries = new List<Delivery>();
             var errors = new List<string>();
@@ -19,6 +19,12 @@ namespace AduosSyncServices.ServicesManager.Validation
                 if (!TryParseRuleType(input.RuleType, out var ruleType))
                 {
                     errors.Add(ValidationMessages.DeliveryInvalidRuleType);
+                    continue;
+                }
+
+                if (!TryParseHandlingTime(input.HandlingTime, out var handlingTime))
+                {
+                    errors.Add(ValidationMessages.DeliveryInvalidHandlingTime);
                     continue;
                 }
 
@@ -80,7 +86,8 @@ namespace AduosSyncServices.ServicesManager.Validation
                     Width = width ?? 0,
                     Height = height ?? 0,
                     Weight = weight ?? 0,
-                    DeliveryName = input.Name?.Trim() ?? string.Empty
+                    DeliveryName = input.Name?.Trim() ?? string.Empty,
+                    HandlingTime = handlingTime
                 });
             }
 
@@ -138,6 +145,11 @@ namespace AduosSyncServices.ServicesManager.Validation
         private static bool TryParseRuleType(string input, out DeliveryRuleType ruleType)
         {
             return System.Enum.TryParse(input, ignoreCase: true, out ruleType);
+        }
+
+        private static bool TryParseHandlingTime(string input, out DeliveryHandlingTime handlingTime)
+        {
+            return System.Enum.TryParse(input, ignoreCase: true, out handlingTime);
         }
 
         private static void ValidateRuleConsistency(DeliveryMatchMode matchMode, List<Delivery> deliveries, List<string> errors)
