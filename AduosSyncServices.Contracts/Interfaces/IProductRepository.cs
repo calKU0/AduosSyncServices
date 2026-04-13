@@ -26,5 +26,7 @@ namespace AduosSyncServices.Contracts.Interfaces
         Task UpdateCompatibilitySet(int productId, bool value, CancellationToken ct);
 
         Task UpdateProductAllegroId(int productId, string allegroProductId, string allegroCategoryId, CancellationToken ct);
+
+        Task<int> DeleteProductsNotInIntegrationIdsAsync(IEnumerable<int> integrationIds, CancellationToken ct);
     }
 }

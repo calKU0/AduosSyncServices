@@ -161,6 +161,9 @@
     <None Update="Migrations\20260409_03_OptimizeProducts_GetToUpload.sql">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Migrations\20260410_01_AddProductSyncStagingAndDeleteProcedures.sql">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Resources\Images\logo.jpg">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

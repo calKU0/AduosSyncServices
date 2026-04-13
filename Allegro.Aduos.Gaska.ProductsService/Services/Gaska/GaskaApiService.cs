@@ -45,31 +45,46 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
         public async Task SyncProducts(CancellationToken ct = default)
         {
             bool hasErrors = false;
+            var syncedIntegrationIds = new HashSet<int>();
 
             if (_categoriesIds == null || !_categoriesIds.Any())
             {
                 _logger.LogInformation("No categories configured. Syncing ALL products.");
-                await SyncProductsByCategory(null, ct);
+                var result = await SyncProductsByCategory(null, ct);
+                hasErrors = hasErrors || !result.Success;
+                syncedIntegrationIds.UnionWith(result.IntegrationIds);
             }
             else
             {
                 foreach (var categoryId in _categoriesIds)
                 {
-                    await SyncProductsByCategory(categoryId, ct);
+                    var result = await SyncProductsByCategory(categoryId, ct);
+                    hasErrors = hasErrors || !result.Success;
+                    syncedIntegrationIds.UnionWith(result.IntegrationIds);
                 }
             }
 
             if (hasErrors)
             {
-                _logger.LogWarning("Errors occurred during product sync. Archiving skipped.");
+                _logger.LogWarning("Errors occurred during product sync. Deletion skipped.");
                 return;
             }
+
+            if (!syncedIntegrationIds.Any())
+            {
+                _logger.LogWarning("No products were fetched from API. Deletion skipped to avoid accidental removal.");
+                return;
+            }
+
+            var deletedCount = await _productRepo.DeleteProductsNotInIntegrationIdsAsync(syncedIntegrationIds, ct);
+            _logger.LogInformation("Deleted {DeletedCount} products not found in API sync.", deletedCount);
         }
 
-        private async Task SyncProductsByCategory(int? categoryId, CancellationToken ct)
+        private async Task<(bool Success, HashSet<int> IntegrationIds)> SyncProductsByCategory(int? categoryId, CancellationToken ct)
         {
             int page = 1;
             bool hasMore = true;
+            var integrationIds = new HashSet<int>();
 
             while (hasMore)
             {
@@ -84,7 +99,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
                     if (!response.IsSuccessStatusCode)
                     {
                         _logger.LogError("API error while fetching page {Page} for category {Category}: {StatusCode}", page, categoryId ?? 0, response.StatusCode);
-                        break;
+                        return (false, integrationIds);
                     }
 
                     var json = await response.Content.ReadAsStringAsync(ct);
@@ -100,6 +115,9 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
                     foreach (var product in apiResponse.Products)
                     {
                         productsToUpsert.Add(MapToProduct(product));
+
+                        if (product.Id > 0)
+                            integrationIds.Add(product.Id);
                     }
 
                     await _productRepo.UpsertProductsBatchAsync(productsToUpsert, ct);
@@ -116,7 +134,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, $"Error while getting products from page {page} for category {categoryId ?? 0}.");
-                    break;
+                    return (false, integrationIds);
                 }
                 finally
                 {
@@ -124,6 +142,8 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
                     await Task.Delay(TimeSpan.FromSeconds(_apiSettings.Value.ProductsInterval), ct);
                 }
             }
+
+            return (true, integrationIds);
         }
 
         public async Task SyncProductDetails(CancellationToken ct = default)

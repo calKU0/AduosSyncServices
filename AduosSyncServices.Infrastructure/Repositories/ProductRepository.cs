@@ -620,5 +620,84 @@ namespace AduosSyncServices.Infrastructure.Repositories
         {
             throw new NotImplementedException();
         }
+
+        public async Task<int> DeleteProductsNotInIntegrationIdsAsync(IEnumerable<int> integrationIds, CancellationToken ct)
+        {
+            var ids = integrationIds?
+                .Where(id => id > 0)
+                .Distinct()
+                .ToList() ?? new List<int>();
+
+            if (!ids.Any())
+                return 0;
+
+            using var connection = _context.CreateConnection();
+            connection.Open();
+
+            var syncRunId = Guid.NewGuid();
+            var totalDeleted = 0;
+
+            try
+            {
+                foreach (var batch in ids.Chunk(2000))
+                {
+                    var table = new DataTable();
+                    table.Columns.Add("IntegrationId", typeof(int));
+
+                    foreach (var id in batch)
+                    {
+                        table.Rows.Add(id);
+                    }
+
+                    var insertCommand = new CommandDefinition(
+                        "ProductSyncStaging_InsertBatch",
+                        new
+                        {
+                            SyncRunId = syncRunId,
+                            IntegrationCompany = _company,
+                            Items = table.AsTableValuedParameter("dbo.ProductIntegrationIdType")
+                        },
+                        commandType: CommandType.StoredProcedure,
+                        commandTimeout: 900,
+                        cancellationToken: ct);
+
+                    await connection.ExecuteAsync(insertCommand);
+                }
+
+                while (true)
+                {
+                    var deleteBatchCommand = new CommandDefinition(
+                        "Products_DeleteMissingBySyncRun",
+                        new
+                        {
+                            SyncRunId = syncRunId,
+                            IntegrationCompany = _company,
+                            BatchSize = 10000
+                        },
+                        commandType: CommandType.StoredProcedure,
+                        commandTimeout: 900,
+                        cancellationToken: ct);
+
+                    var deletedInBatch = await connection.ExecuteScalarAsync<int>(deleteBatchCommand);
+                    if (deletedInBatch <= 0)
+                        break;
+
+                    totalDeleted += deletedInBatch;
+                }
+
+                return totalDeleted;
+            }
+            finally
+            {
+                var cleanupCommand = new CommandDefinition(
+                    "ProductSyncStaging_ClearRun",
+                    new { SyncRunId = syncRunId, IntegrationCompany = _company },
+                    commandType: CommandType.StoredProcedure,
+                    commandTimeout: 900,
+                    cancellationToken: ct);
+
+                await connection.ExecuteAsync(cleanupCommand);
+            }
+        }
     }
 }
