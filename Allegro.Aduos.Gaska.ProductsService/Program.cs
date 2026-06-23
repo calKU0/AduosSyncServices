@@ -3,9 +3,8 @@ using AduosSyncServices.Contracts.Settings;
 using AduosSyncServices.Infrastructure.Data;
 using AduosSyncServices.Infrastructure.Logging;
 using AduosSyncServices.Infrastructure.Repositories;
-using AduosSyncServices.Infrastructure.Settings;
 using AduosSyncServices.Infrastructure.Services;
-using Allegro.Aduos.Gaska.ProductsService;
+using AduosSyncServices.Infrastructure.Settings;
 using Allegro.Aduos.Gaska.ProductsService.Constants;
 using Allegro.Aduos.Gaska.ProductsService.Services.Allegro;
 using Allegro.Aduos.Gaska.ProductsService.Services.Gaska.Interfaces;
@@ -84,12 +83,14 @@ var host = Host.CreateDefaultBuilder(args)
         {
             client.BaseAddress = new Uri(configuration["AllegroApiCredentials:AuthBaseUrl"]);
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/x-www-form-urlencoded"));
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(configuration["AppSettings:UserAgent"]);
         });
 
         services.AddHttpClient<AllegroApiClient>(client =>
         {
             client.BaseAddress = new Uri(configuration["AllegroApiCredentials:BaseUrl"]);
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.allegro.public.v1+json"));
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(configuration["AppSettings:UserAgent"]);
         });
 
 
