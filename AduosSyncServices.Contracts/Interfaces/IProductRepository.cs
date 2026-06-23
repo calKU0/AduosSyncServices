@@ -4,11 +4,12 @@ namespace AduosSyncServices.Contracts.Interfaces
 {
     public interface IProductRepository
     {
-        Task<List<Product>> GetProductsForDetailUpdate(int limit, CancellationToken ct);
+        Task<List<int>> GetProductsForDetailUpdate(int limit, CancellationToken ct);
         Task UpsertProductsBatchAsync(List<Product> product, CancellationToken ct);
         Task<bool> UpsertProductAsync(Product product, CancellationToken ct);
         Task<bool> UpdateProductStockAsync(string productCode, int stock, CancellationToken ct);
         Task<bool> DeleteProduct(int productId, CancellationToken ct);
+        Task<Product?> GetProductByIntegrationIdAsync(int integrationId, CancellationToken ct);
 
         Task<List<Product>> GetProductsToUpload(int minProductStock, decimal minProductPrice, CancellationToken ct);
 

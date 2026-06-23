@@ -4,6 +4,7 @@ using AduosSyncServices.Contracts.Settings;
 using AduosSyncServices.Infrastructure.Helpers;
 using Allegro.Aduos.Gaska.ProductsService.Constants;
 using Allegro.Aduos.Gaska.ProductsService.DTOs;
+using Allegro.Aduos.Gaska.ProductsService.DTOs.GaskaApi;
 using Allegro.Aduos.Gaska.ProductsService.Services.Gaska.Interfaces;
 using Allegro.Aduos.Gaska.ProductsService.Settings;
 using Microsoft.Extensions.Options;
@@ -16,6 +17,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
     {
         private readonly ILogger<GaskaApiService> _logger;
         private readonly IProductRepository _productRepo;
+        private readonly IImageRepository _imageRepo;
         private readonly HttpClient _http;
         private readonly List<int> _categoriesIds;
         private IOptions<GaskaApiCredentials> _apiSettings;
@@ -26,9 +28,10 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
             WriteIndented = true
         };
 
-        public GaskaApiService(IProductRepository productRepo, HttpClient http, IOptions<GaskaApiCredentials> apiSettings, IOptions<AppSettings> appSettings, ILogger<GaskaApiService> logger)
+        public GaskaApiService(IProductRepository productRepo, IImageRepository imageRepo, HttpClient http, IOptions<GaskaApiCredentials> apiSettings, IOptions<AppSettings> appSettings, ILogger<GaskaApiService> logger)
         {
             _productRepo = productRepo;
+            _imageRepo = imageRepo;
             _http = http;
             _categoriesIds = appSettings.Value.CategoriesId?
                 .Split(',', StringSplitOptions.RemoveEmptyEntries)
@@ -148,12 +151,32 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
 
         public async Task SyncProductDetails(CancellationToken ct = default)
         {
-            List<Product> productsToUpdate;
+            List<int> productsToUpdate;
 
             try
             {
                 productsToUpdate = await _productRepo.GetProductsForDetailUpdate(_apiSettings.Value.ProductPerDay, ct);
-                if (!productsToUpdate.Any()) return;
+
+                if (!productsToUpdate.Any() || productsToUpdate.Count < _apiSettings.Value.ProductPerDay)
+                {
+                    var remainingSlots = _apiSettings.Value.ProductPerDay - productsToUpdate.Count;
+
+                    if (remainingSlots > 0)
+                    {
+                        var productsChanged = await GetProductsChanged(DateTime.Now.AddDays(-1), ct);
+                        if (productsChanged != null && productsChanged.Any())
+                        {
+                            productsToUpdate.AddRange(productsChanged.Take(remainingSlots));
+                        }
+                    }
+                }
+
+                if (!productsToUpdate.Any())
+                {
+                    _logger.LogInformation("No products found for detail update today.");
+                    return;
+                }
+
             }
             catch (Exception ex)
             {
@@ -161,16 +184,16 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
                 return;
             }
 
-            foreach (var product in productsToUpdate)
+            foreach (var productId in productsToUpdate)
             {
                 try
                 {
-                    var url = $"/product?id={product.IntegrationId}&lng=pl";
+                    var url = $"/product?id={productId}&lng=pl";
                     var response = await _http.GetAsync(url, ct);
 
                     if (!response.IsSuccessStatusCode)
                     {
-                        _logger.LogError("API error while fetching product details for {ProductCode}. Response Status: {StatusCode}", product.Code, response.StatusCode);
+                        _logger.LogError("API error while fetching product details for {Id}. Response Status: {StatusCode}", productId, response.StatusCode);
                         continue;
                     }
 
@@ -179,24 +202,54 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
 
                     if (apiResponse?.Product == null)
                     {
-                        _logger.LogWarning("Product details returned null for {ProductCode}. Skipping update.", product.Code);
+                        _logger.LogWarning("Product details returned null for {Id}. Skipping update.", productId);
                         continue;
                     }
 
-                    await SaveProductImagesAsync(apiResponse.Product, product.Id, ct);
-                    await _productRepo.UpsertProductAsync(MapToProduct(product, apiResponse.Product), ct);
+                    var existingProduct = await _productRepo.GetProductByIntegrationIdAsync(productId, ct);
+                    if (existingProduct == null)
+                    {
+                        _logger.LogInformation("Product with IntegrationId {Id} not found in database. Skipping update.", productId);
+                        continue;
+                    }
 
-                    _logger.LogInformation("Successfully fetched and updated details of product {ProductCode}.", product.Code);
+                    await SaveProductImagesAsync(apiResponse.Product, existingProduct.Id, ct);
+                    await _productRepo.UpsertProductAsync(MapToProduct(existingProduct, apiResponse.Product), ct);
+
+                    _logger.LogInformation("Successfully fetched and updated details of product {ProductCode}.", existingProduct.Code);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error while updating product {ProductCode}.", product.Code);
+                    _logger.LogError(ex, "Error while updating product {Id}.", productId);
                 }
                 finally
                 {
                     await Task.Delay(TimeSpan.FromSeconds(_apiSettings.Value.ProductInterval), ct);
                 }
             }
+        }
+
+        private async Task<List<int>?> GetProductsChanged(DateTime dateFrom, CancellationToken ct)
+        {
+            var url = $"/productsChanged?dateFrom={dateFrom:yyyy-MM-dd}";
+            var response = await _http.GetAsync(url, ct);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogError("API error while fetching products changed from {DateFrom}", dateFrom);
+                return null;
+            }
+
+            var json = await response.Content.ReadAsStringAsync(ct);
+            var apiResponse = JsonSerializer.Deserialize<ProductsChangedReponse>(json, _jsonOptions);
+
+            if (apiResponse?.Products == null || !apiResponse.Products.Any())
+            {
+                _logger.LogWarning("No products changed from {DateFrom}.", dateFrom);
+                return null;
+            }
+
+            return apiResponse.Products.Select(p => p.TwrId).ToList();
         }
 
         private async Task SaveProductImagesAsync(ApiProduct product, int productId, CancellationToken ct)
@@ -213,8 +266,8 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
                 return;
 
             var savedPaths = await ImageHelper.SaveImagesAsync(_http, urls, productId, ServiceConstants.ImagesFolder, ct);
-
-            if (savedPaths == null || savedPaths.Count == 0)
+            await _imageRepo.DeleteProductImagesAsync(productId, ct);
+            if (savedPaths == null || !savedPaths.Any())
                 _logger.LogWarning("Failed to save images for product {Code}", product.CodeGaska);
         }
 

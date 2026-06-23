@@ -22,14 +22,24 @@ namespace AduosSyncServices.Infrastructure.Repositories
             _account = (int)options.Value.Account;
         }
 
-        public async Task<List<Product>> GetProductsForDetailUpdate(int limit, CancellationToken ct)
+        public async Task<List<int>> GetProductsForDetailUpdate(int limit, CancellationToken ct)
         {
             using var conn = _context.CreateConnection();
-            return (await conn.QueryAsync<Product>(
+            return (await conn.QueryAsync<int>(
                 "Products_GetForDetailUpdate",
                 new { Limit = limit, IntegrationCompany = _company },
                 commandType: CommandType.StoredProcedure,
                 commandTimeout: 900)).ToList();
+        }
+
+        public async Task<Product?> GetProductByIntegrationIdAsync(int integrationId, CancellationToken ct)
+        {
+            using var conn = _context.CreateConnection();
+            return (await conn.QuerySingleOrDefaultAsync<Product?>(
+                "Products_GetByIntegrationId",
+                new { IntegrationId = integrationId, IntegrationCompany = _company },
+                commandType: CommandType.StoredProcedure,
+                commandTimeout: 900));
         }
 
         public async Task<bool> DeleteProduct(int productId, CancellationToken ct)

@@ -77,7 +77,10 @@ public class Worker : BackgroundService
                 _logger.LogInformation($"{stepName} completed in {FormatDuration(sw.Elapsed)}.");
             }
 
-            await MeasureStepAsync("Basic product sync", () => gaskaApiService.SyncProducts());
+            if (DateTime.Now.Hour >= 2 && DateTime.Now.Hour <= 23)
+            {
+                await MeasureStepAsync("Basic product sync", () => gaskaApiService.SyncProducts());
+            }
             await MeasureStepAsync("Allegro offers sync", () => offerService.SyncAllegroOffers());
             await MeasureStepAsync("Allegro offers details sync", () => offerService.SyncAllegroOffersDetails());
 

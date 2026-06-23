@@ -2,12 +2,7 @@
 {
     public static class ImageHelper
     {
-        public static async Task<List<string>> SaveImagesAsync(
-            HttpClient httpClient,
-            List<string> urls,
-            int productId,
-            string baseDirectory,
-            CancellationToken ct = default)
+        public static async Task<List<string>> SaveImagesAsync(HttpClient httpClient, List<string> urls, int productId, string baseDirectory, CancellationToken ct = default)
         {
             var savedFiles = new List<string>();
 

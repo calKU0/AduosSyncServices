@@ -608,31 +608,6 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                 .Select(x => x.Url)
                 .ToList();
 
-            // Upload logo LAST
-            var logoPath = Path.Combine(
-                AppDomain.CurrentDomain.BaseDirectory,
-                "Resources",
-                "Images",
-                "logo.jpg");
-
-            try
-            {
-                if (File.Exists(logoPath))
-                {
-                    var logoBytes = await File.ReadAllBytesAsync(logoPath, ct);
-                    var logoResult = await _apiClient.PostAsync<AllegroImageResponse>("/sale/images", logoBytes, ct, "image/jpeg");
-
-                    if (!string.IsNullOrWhiteSpace(logoResult?.Location))
-                    {
-                        orderedUrls.Add(logoResult.Location);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to upload logo image.");
-            }
-
             _logger.LogInformation("Imported {Count} images for product {Code}", orderedUrls.Count, product.Code);
 
             var result = new List<AllegroImages>(orderedUrls.Count);
