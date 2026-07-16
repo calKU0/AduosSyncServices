@@ -11,6 +11,8 @@ namespace AduosSyncServices.Contracts.Interfaces
         Task<bool> DeleteProduct(int productId, CancellationToken ct);
         Task<Product?> GetProductByIntegrationIdAsync(int integrationId, CancellationToken ct);
 
+        Task<List<Product>> GetProductsByIdsAsync(IEnumerable<int> productIds, CancellationToken ct);
+
         Task<List<Product>> GetProductsToUpload(int minProductStock, decimal minProductPrice, CancellationToken ct);
 
         Task<List<Product>> GetAllProducts(CancellationToken ct);
@@ -28,6 +30,8 @@ namespace AduosSyncServices.Contracts.Interfaces
 
         Task UpdateProductAllegroId(int productId, string allegroProductId, string allegroCategoryId, CancellationToken ct);
 
-        Task<int> DeleteProductsNotInIntegrationIdsAsync(IEnumerable<int> integrationIds, CancellationToken ct);
+        Task<int> ArchiveProductsNotInIntegrationIdsAsync(IEnumerable<int> integrationIds, CancellationToken ct);
+
+        Task<int> DeleteArchivedProductsWithEndedOffersAsync(CancellationToken ct);
     }
 }

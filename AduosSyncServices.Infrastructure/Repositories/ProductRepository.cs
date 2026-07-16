@@ -42,6 +42,37 @@ namespace AduosSyncServices.Infrastructure.Repositories
                 commandTimeout: 900));
         }
 
+        public async Task<List<Product>> GetProductsByIdsAsync(IEnumerable<int> productIds, CancellationToken ct)
+        {
+            var ids = productIds?.Where(id => id > 0).Distinct().ToList() ?? new List<int>();
+            if (ids.Count == 0)
+                return new List<Product>();
+
+            var table = new DataTable();
+            table.Columns.Add("Id", typeof(int));
+            foreach (var id in ids)
+            {
+                table.Rows.Add(id);
+            }
+
+            using var connection = _context.CreateConnection();
+            connection.Open();
+
+            var command = new CommandDefinition(
+                "Products_GetByIds",
+                new
+                {
+                    Ids = table.AsTableValuedParameter("dbo.ProductIdType"),
+                    IntegrationCompany = _company
+                },
+                commandType: CommandType.StoredProcedure,
+                commandTimeout: 900,
+                cancellationToken: ct);
+
+            var products = await connection.QueryAsync<Product>(command);
+            return products.ToList();
+        }
+
         public async Task<bool> DeleteProduct(int productId, CancellationToken ct)
         {
             throw new NotImplementedException();
@@ -631,7 +662,7 @@ namespace AduosSyncServices.Infrastructure.Repositories
             throw new NotImplementedException();
         }
 
-        public async Task<int> DeleteProductsNotInIntegrationIdsAsync(IEnumerable<int> integrationIds, CancellationToken ct)
+        public async Task<int> ArchiveProductsNotInIntegrationIdsAsync(IEnumerable<int> integrationIds, CancellationToken ct)
         {
             var ids = integrationIds?
                 .Where(id => id > 0)
@@ -645,7 +676,7 @@ namespace AduosSyncServices.Infrastructure.Repositories
             connection.Open();
 
             var syncRunId = Guid.NewGuid();
-            var totalDeleted = 0;
+            var totalArchived = 0;
 
             try
             {
@@ -676,8 +707,8 @@ namespace AduosSyncServices.Infrastructure.Repositories
 
                 while (true)
                 {
-                    var deleteBatchCommand = new CommandDefinition(
-                        "Products_DeleteMissingBySyncRun",
+                    var archiveBatchCommand = new CommandDefinition(
+                        "Products_ArchiveMissingBySyncRun",
                         new
                         {
                             SyncRunId = syncRunId,
@@ -688,14 +719,14 @@ namespace AduosSyncServices.Infrastructure.Repositories
                         commandTimeout: 900,
                         cancellationToken: ct);
 
-                    var deletedInBatch = await connection.ExecuteScalarAsync<int>(deleteBatchCommand);
-                    if (deletedInBatch <= 0)
+                    var archivedInBatch = await connection.ExecuteScalarAsync<int>(archiveBatchCommand);
+                    if (archivedInBatch <= 0)
                         break;
 
-                    totalDeleted += deletedInBatch;
+                    totalArchived += archivedInBatch;
                 }
 
-                return totalDeleted;
+                return totalArchived;
             }
             finally
             {
@@ -708,6 +739,36 @@ namespace AduosSyncServices.Infrastructure.Repositories
 
                 await connection.ExecuteAsync(cleanupCommand);
             }
+        }
+
+        public async Task<int> DeleteArchivedProductsWithEndedOffersAsync(CancellationToken ct)
+        {
+            using var connection = _context.CreateConnection();
+            connection.Open();
+
+            var totalDeleted = 0;
+
+            while (true)
+            {
+                var deleteBatchCommand = new CommandDefinition(
+                    "Products_DeleteArchivedProductsWithEndedOffers",
+                    new
+                    {
+                        IntegrationCompany = _company,
+                        BatchSize = 5000
+                    },
+                    commandType: CommandType.StoredProcedure,
+                    commandTimeout: 900,
+                    cancellationToken: ct);
+
+                var deletedInBatch = await connection.ExecuteScalarAsync<int>(deleteBatchCommand);
+                if (deletedInBatch <= 0)
+                    break;
+
+                totalDeleted += deletedInBatch;
+            }
+
+            return totalDeleted;
         }
     }
 }

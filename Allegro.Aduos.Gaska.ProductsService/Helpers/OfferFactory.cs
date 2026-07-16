@@ -39,6 +39,15 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
             PriceSettings priceSettings)
         {
             var product = offer.Product;
+
+            if (product.IsArchived || product.InStock < appSettings.MinProductStock || product.PriceNet < appSettings.MinProductPriceNet)
+            {
+                return new ProductOfferRequest
+                {
+                    Publication = new Publication { Status = "ENDED" }
+                };
+            }
+
             var quantity = GetPackageQuantity(product);
 
             return CreateOffer(
@@ -323,10 +332,12 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
 
         private static Description BuildDescription(Product product)
         {
+            var logoUrl = product.AllegroImages.Last().Url;
             var description = new Description { Sections = new List<Section>() };
             var images = product.AllegroImages
                 .DistinctBy(i => i.Url)
                 .Select(i => i.Url)
+                .Where(url => url != logoUrl)
                 .ToList();
             var imageIndex = 0;
 
@@ -412,6 +423,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
             }
 
             description.Sections.Add(new Section { SectionItems = new List<SectionItem> { new() { Type = "TEXT", Content = nameH1Html } } });
+            description.Sections.Add(new Section { SectionItems = new List<SectionItem> { new() { Type = "IMAGE", Url = logoUrl } } });
 
             var descriptionSection = new StringBuilder()
                 .Append(nameH2Html)
@@ -431,6 +443,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
             };
 
             description.Sections.Add(new Section { SectionItems = descriptionSectionItems });
+            description.Sections.Add(new Section { SectionItems = new List<SectionItem> { new() { Type = "IMAGE", Url = logoUrl } } });
 
             while (imageIndex < images.Count)
             {
@@ -446,6 +459,15 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
 
                 // Add images section (image1,image2 etc.)
                 description.Sections.Add(new Section { SectionItems = sectionImageItems });
+
+                // Add logo section AFTER each image section
+                description.Sections.Add(new Section
+                {
+                    SectionItems = new List<SectionItem>
+                    {
+                        new() { Type = "IMAGE", Url = logoUrl }
+                    }
+                });
             }
 
             return description;

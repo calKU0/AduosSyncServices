@@ -1,8 +1,8 @@
-﻿using AduosSyncServices.Contracts.DTOs.Allegro;
+﻿using AduosSyncServices.Contracts.Clients;
+using AduosSyncServices.Contracts.DTOs.Allegro;
 using AduosSyncServices.Contracts.Interfaces;
 using AduosSyncServices.Contracts.Models;
 using AduosSyncServices.Infrastructure.Helpers;
-using AduosSyncServices.Infrastructure.Services;
 using Allegro.Aduos.Gaska.ProductsService.Constants;
 using Allegro.Aduos.Gaska.ProductsService.Helpers;
 using Allegro.Aduos.Gaska.ProductsService.Settings;
@@ -22,7 +22,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
         private readonly IImageRepository _imageRepo;
         private readonly ICategoryRepository _categoryRepo;
         private readonly IParameterRepository _parameterRepo;
-        private readonly AllegroApiClient _apiClient;
+        private readonly IAllegroApiClient _apiClient;
         private readonly AppSettings _appSettings;
         private readonly PriceSettings _priceSettings;
         private readonly AllegroSettings _allegroSettings;
@@ -36,7 +36,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
             WriteIndented = true
         };
 
-        public AllegroOfferService(IProductRepository productRepo, IOfferRepository offerRepo, IParameterRepository parameterRepo, ICategoryRepository categoryRepo, AllegroApiClient apiClient, IOptions<AppSettings> appsettings, IOptions<AllegroSettings> allegroSettings, IOptions<PriceSettings> priceSettings, ILogger<AllegroOfferService> logger, IImageRepository imageRepo)
+        public AllegroOfferService(IProductRepository productRepo, IOfferRepository offerRepo, IParameterRepository parameterRepo, ICategoryRepository categoryRepo, IAllegroApiClient apiClient, IOptions<AppSettings> appsettings, IOptions<AllegroSettings> allegroSettings, IOptions<PriceSettings> priceSettings, ILogger<AllegroOfferService> logger, IImageRepository imageRepo)
         {
             _productRepo = productRepo;
             _offerRepo = offerRepo;
@@ -56,7 +56,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
             {
                 var allOffers = await FetchAllOffers(ct);
 
-                var shippingRates = await _apiClient.GetAsync<ShippingRatesReponse>("/sale/shipping-rates", ct);
+                var shippingRates = await _apiClient.GetShippingRates(ct);
                 var shippingDict = shippingRates?.ShippingRates?.ToDictionary(s => s.Id, s => s.Name) ?? new Dictionary<string, string>();
 
                 // Split offers into two sets
@@ -130,8 +130,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                 {
                     try
                     {
-                        var detailedOffer = await _apiClient.GetAsync<AllegroOfferDetails.Root>(
-                            $"/sale/product-offers/{offer.Id}", token);
+                        var detailedOffer = await _apiClient.GetOfferDetails(offer.Id, token);
 
                         if (detailedOffer == null)
                             return;
@@ -177,7 +176,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
 
             try
             {
-                var firstPage = await _apiClient.GetAsync<OffersResponse>($"/sale/offers?limit={limit}&offset=0", ct);
+                var firstPage = await _apiClient.GetOffers(limit, 0, ct);
 
                 if (firstPage?.Offers == null || firstPage.Offers.Count == 0)
                 {
@@ -211,8 +210,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
 
                     try
                     {
-                        var page = await _apiClient.GetAsync<OffersResponse>(
-                            $"/sale/offers?limit={limit}&offset={offset}", token);
+                        var page = await _apiClient.GetOffers(limit, offset, token);
 
                         if (page?.Offers == null)
                             return;
@@ -259,7 +257,10 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                 {
                     try
                     {
-                        if (offer.Product.AllegroImages == null || !offer.Product.AllegroImages.Any())
+                        // Archived products don't need fresh images - PatchOffer sends a minimal
+                        // "end this offer" request for them regardless, and importing/requiring
+                        // images here would just risk skipping the end-offer patch entirely.
+                        if (!offer.Product.IsArchived && (offer.Product.AllegroImages == null || !offer.Product.AllegroImages.Any()))
                         {
                             var images = await ImportImages(offer.Product, token);
 
@@ -271,7 +272,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                             offer.Product.AllegroImages = images;
                         }
                         var offerDto = OfferFactory.PatchOffer(offer, allegroCategories, _appSettings, _allegroSettings, _priceSettings);
-                        var response = await _apiClient.SendWithResponseAsync($"/sale/product-offers/{offer.Id}", HttpMethod.Patch, offerDto, token);
+                        var response = await _apiClient.UpdateOffer(offer.Id, offerDto, token);
 
                         var body = await response.Content.ReadAsStringAsync(token);
 
@@ -317,7 +318,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                             return;
                         }
                         var offer = OfferFactory.BuildOffer(product, allegroCategories, _appSettings, _allegroSettings, _priceSettings);
-                        var response = await _apiClient.SendWithResponseAsync("/sale/product-offers", HttpMethod.Post, offer, token);
+                        var response = await _apiClient.CreateOffer(offer, token);
                         var body = await response.Content.ReadAsStringAsync();
                         await LogAllegroResponse(product, response, body);
                     }
@@ -587,7 +588,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
 
                         var contentType = Utils.GetContentTypeFromPath(filePath);
 
-                        var uploadResult = await _apiClient.PostAsync<AllegroImageResponse>("/sale/images", validatedBytes, token, contentType);
+                        var uploadResult = await _apiClient.UploadImage(validatedBytes, contentType, token);
 
                         if (!string.IsNullOrWhiteSpace(uploadResult?.Location))
                         {
@@ -607,6 +608,31 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                 .OrderBy(x => x.FileName, StringComparer.OrdinalIgnoreCase)
                 .Select(x => x.Url)
                 .ToList();
+
+            // Upload logo LAST
+            var logoPath = Path.Combine(
+                AppDomain.CurrentDomain.BaseDirectory,
+                "Resources",
+                "Images",
+                "logo.jpg");
+
+            try
+            {
+                if (File.Exists(logoPath))
+                {
+                    var logoBytes = await File.ReadAllBytesAsync(logoPath, ct);
+                    var logoResult = await _apiClient.UploadImage(logoBytes, "image/jpeg", ct);
+
+                    if (!string.IsNullOrWhiteSpace(logoResult?.Location))
+                    {
+                        orderedUrls.Add(logoResult.Location);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to upload logo image.");
+            }
 
             _logger.LogInformation("Imported {Count} images for product {Code}", orderedUrls.Count, product.Code);
 

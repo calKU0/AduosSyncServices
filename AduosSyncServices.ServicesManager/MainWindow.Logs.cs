@@ -5,6 +5,7 @@ using AduosSyncServices.ServicesManager.Models;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Threading;
 
@@ -44,8 +45,6 @@ namespace AduosSyncServices.ServicesManager
             ShowLogsView();
 
             LvLogFiles.ItemsSource = logFiles;
-            IcLogLines.ItemsSource = _filteredLogLines;
-
             HookLogLinesScrollViewer();
 
             _logRefreshService.Start(TimeSpan.FromSeconds(5), RefreshTimer_TickAsync);
@@ -61,33 +60,32 @@ namespace AduosSyncServices.ServicesManager
                 SelectedLogFile is not LogFileItem item ||
                 string.IsNullOrEmpty(_currentPath)) return;
 
-            var listBox = IcLogLines;
-            if (listBox.Items.Count == 0) return;
-
-            var sv = FindVisualChilds.FindVisualChild<ScrollViewer>(listBox);
-            bool isAtBottom = sv != null &&
-                              Math.Abs(sv.VerticalOffset - sv.ScrollableHeight) < 2;
+            var sv = GetScrollViewer(IcLogLines);
+            bool isAtBottom = sv != null && Math.Abs(sv.VerticalOffset - sv.ScrollableHeight) < 2;
 
             try
             {
                 var newLines = await Task.Run(() => LogFileReader.ReadNewLines(_currentPath!, ref _lastReadOffset));
                 if (newLines.Count > 0)
                 {
-                    _currentLogLines.AddRange(newLines.Select(_logService.ParseLogLine));
-                    ApplyFilter();
+                    var parsedNew = newLines.Select(_logService.ParseLogLine).ToList();
+                    _currentLogLines.AddRange(parsedNew);
 
                     int newWarnings = newLines.Count(l => l.Contains("WRN]", StringComparison.Ordinal));
                     int newErrors = newLines.Count(l => l.Contains("ERR]", StringComparison.Ordinal));
-
                     item.WarningsCount += newWarnings;
                     item.ErrorsCount += newErrors;
 
-                    if (isAtBottom && sv != null)
+                    var filteredNew = ApplyLineFilter(parsedNew);
+                    if (filteredNew.Count > 0)
                     {
-                        await Dispatcher.BeginInvoke(() =>
+                        _filteredLogLines.AddRange(filteredNew);
+                        AppendLogLines(filteredNew);
+
+                        if (isAtBottom)
                         {
-                            listBox.ScrollIntoView(listBox.Items[^1]);
-                        }, DispatcherPriority.Background);
+                            await Dispatcher.BeginInvoke(() => IcLogLines.ScrollToEnd(), DispatcherPriority.Background);
+                        }
                     }
                 }
             }
@@ -166,13 +164,15 @@ namespace AduosSyncServices.ServicesManager
 
             await Dispatcher.BeginInvoke(() =>
             {
-                if (IcLogLines.Items.Count > 0)
-                {
-                    IcLogLines.UpdateLayout();
-                    IcLogLines.ScrollIntoView(IcLogLines.Items[^1]);
-                }
+                IcLogLines.UpdateLayout();
+                IcLogLines.ScrollToEnd();
             }, DispatcherPriority.Background);
         }
+
+        private List<LogLine> ApplyLineFilter(IEnumerable<LogLine> lines) =>
+            ShowOnlyWarningsAndErrors
+                ? lines.Where(l => l.Level == LogLevel.Warning || l.Level == LogLevel.Error).ToList()
+                : lines.ToList();
 
         private void ApplyFilter()
         {
@@ -186,8 +186,10 @@ namespace AduosSyncServices.ServicesManager
                     _filteredLogLines.Add(line);
             }
 
+            RenderLogLinesFull(_filteredLogLines);
+
             if (_filteredLogLines.Count > 0 && _isAtBottom)
-                IcLogLines.ScrollIntoView(_filteredLogLines[^1]);
+                IcLogLines.ScrollToEnd();
         }
 
         private async Task HandleShowOnlyWarningsChangedAsync()
@@ -275,13 +277,8 @@ namespace AduosSyncServices.ServicesManager
 
                 await Dispatcher.BeginInvoke(() =>
                 {
-                    if (IcLogLines.Items.Count > 0)
-                    {
-                        IcLogLines.UpdateLayout();
-                        IcLogLines.ScrollIntoView(IcLogLines.Items[^1]);
-                        var sv = GetScrollViewer(IcLogLines);
-                        sv?.ScrollToEnd();
-                    }
+                    IcLogLines.UpdateLayout();
+                    IcLogLines.ScrollToEnd();
                 }, DispatcherPriority.Background);
             }
             catch (Exception ex)
@@ -297,22 +294,21 @@ namespace AduosSyncServices.ServicesManager
 
             try
             {
-                var anchor = IcLogLines.Items.Count > 0 ? IcLogLines.Items[0] : null;
-
                 var (older, newStart, reachedStart) =
                     await Task.Run(() => LogFileReader.ReadPreviousLines(_currentPath!, _loadedStartOffset, PageLines));
 
                 if (older.Count > 0)
                 {
-                    _currentLogLines.InsertRange(0, older.Select(_logService.ParseLogLine));
-                    ApplyFilter();
+                    var parsedOlder = older.Select(_logService.ParseLogLine).ToList();
+                    _currentLogLines.InsertRange(0, parsedOlder);
                     _loadedStartOffset = newStart;
                     _reachedFileStart = reachedStart;
 
-                    if (anchor != null)
+                    var filteredOlder = ApplyLineFilter(parsedOlder);
+                    if (filteredOlder.Count > 0)
                     {
-                        IcLogLines.UpdateLayout();
-                        IcLogLines.ScrollIntoView(anchor);
+                        _filteredLogLines.InsertRange(0, filteredOlder);
+                        PrependLogLinesPreservingScroll(filteredOlder);
                     }
                 }
             }
@@ -322,11 +318,74 @@ namespace AduosSyncServices.ServicesManager
             }
         }
 
+        // --- RichTextBox rendering helpers ---
+        // Three distinct paths, deliberately not unified into one "just re-render everything" method:
+        // a full rebuild resets scroll position, which is fine for a fresh file/filter load but would
+        // yank the view out from under a user reading history every time new lines tick in or older
+        // lines get paged in.
+
+        private void RenderLogLinesFull(IEnumerable<LogLine> lines)
+        {
+            var document = IcLogLines.Document;
+            document.Blocks.Clear();
+
+            foreach (var line in lines)
+                document.Blocks.Add(CreateLogParagraph(line));
+        }
+
+        private void AppendLogLines(IEnumerable<LogLine> lines)
+        {
+            var blocks = IcLogLines.Document.Blocks;
+            foreach (var line in lines)
+                blocks.Add(CreateLogParagraph(line));
+        }
+
+        private void PrependLogLinesPreservingScroll(IReadOnlyList<LogLine> lines)
+        {
+            var document = IcLogLines.Document;
+            var sv = GetScrollViewer(IcLogLines);
+            var firstBlock = document.Blocks.FirstBlock;
+
+            var offsetBefore = sv?.VerticalOffset ?? 0;
+            var anchorPointer = firstBlock?.ContentStart;
+            Rect? rectBefore = anchorPointer?.GetCharacterRect(LogicalDirection.Forward);
+
+            foreach (var line in lines)
+            {
+                var paragraph = CreateLogParagraph(line);
+                if (firstBlock != null)
+                    document.Blocks.InsertBefore(firstBlock, paragraph);
+                else
+                    document.Blocks.Add(paragraph);
+            }
+
+            if (anchorPointer != null && rectBefore.HasValue && sv != null)
+            {
+                IcLogLines.UpdateLayout();
+                var rectAfter = anchorPointer.GetCharacterRect(LogicalDirection.Forward);
+                var delta = rectAfter.Top - rectBefore.Value.Top;
+                sv.ScrollToVerticalOffset(offsetBefore + delta);
+            }
+        }
+
+        private static Paragraph CreateLogParagraph(LogLine line) => new(new Run(line.Message))
+        {
+            Margin = new Thickness(0, 0, 0, 1),
+            Foreground = line.Level switch
+            {
+                LogLevel.Information => Brushes.Green,
+                LogLevel.Warning => Brushes.Orange,
+                LogLevel.Error => Brushes.Red,
+                _ => Brushes.Black
+            }
+        };
+
         private void ResetLogView()
         {
             _logRefreshService.Stop();
             _currentLogLines.Clear();
             _filteredLogLines.Clear();
+            IcLogLines.Document.Blocks.Clear();
             _currentPath = null;
             _loadedStartOffset = 0;
             _lastReadOffset = 0;

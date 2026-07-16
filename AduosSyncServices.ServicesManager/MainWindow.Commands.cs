@@ -9,6 +9,7 @@ namespace AduosSyncServices.ServicesManager
     {
         public ICommand ShowLogsCommand { get; private set; } = null!;
         public ICommand ShowConfigCommand { get; private set; } = null!;
+        public ICommand ShowOrdersCommand { get; private set; } = null!;
         public ICommand StartServiceCommand { get; private set; } = null!;
         public ICommand StopServiceCommand { get; private set; } = null!;
         public ICommand RestartServiceCommand { get; private set; } = null!;
@@ -18,10 +19,22 @@ namespace AduosSyncServices.ServicesManager
         {
             ShowLogsCommand = new RelayCommand(async () => await ShowLogsAsync());
             ShowConfigCommand = new RelayCommand(ShowConfig);
+            ShowOrdersCommand = new RelayCommand(async () => await ShowOrdersAsync());
             StartServiceCommand = new RelayCommand(async () => await StartServiceAsync());
             StopServiceCommand = new RelayCommand(async () => await StopServiceAsync());
             RestartServiceCommand = new RelayCommand(async () => await RestartServiceAsync());
             SelectServiceCommand = new RelayCommand<ServiceItem>(SelectServiceFromCommand);
+        }
+
+        private async Task ShowOrdersAsync()
+        {
+            if (!TryHandleUnsavedConfigChanges())
+            {
+                BtnShowConfig.IsChecked = true;
+                return;
+            }
+
+            await ShowOrdersViewAsync();
         }
 
         private async Task ShowLogsAsync()

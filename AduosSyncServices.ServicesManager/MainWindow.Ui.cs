@@ -9,6 +9,7 @@ namespace AduosSyncServices.ServicesManager
             MainContentArea.Visibility = Visibility.Visible;
             LogsViewContainer.Visibility = Visibility.Visible;
             ConfigViewContainer.Visibility = Visibility.Collapsed;
+            OrdersViewContainer.Visibility = Visibility.Collapsed;
         }
 
         private void ShowConfigView()
@@ -16,6 +17,7 @@ namespace AduosSyncServices.ServicesManager
             MainContentArea.Visibility = Visibility.Visible;
             LogsViewContainer.Visibility = Visibility.Collapsed;
             ConfigViewContainer.Visibility = Visibility.Visible;
+            OrdersViewContainer.Visibility = Visibility.Collapsed;
         }
 
         private void HideContentViews()
@@ -23,12 +25,14 @@ namespace AduosSyncServices.ServicesManager
             MainContentArea.Visibility = Visibility.Collapsed;
             LogsViewContainer.Visibility = Visibility.Collapsed;
             ConfigViewContainer.Visibility = Visibility.Collapsed;
+            OrdersViewContainer.Visibility = Visibility.Collapsed;
         }
 
         private void ResetNavSelection()
         {
             BtnShowLogs.IsChecked = false;
             BtnShowConfig.IsChecked = false;
+            BtnShowOrders.IsChecked = false;
         }
 
         private void ShowSelectionOverlay()

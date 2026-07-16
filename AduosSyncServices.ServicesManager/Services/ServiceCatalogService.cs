@@ -26,7 +26,8 @@ namespace AduosSyncServices.ServicesManager.Services
                     LogoPath = ConfigurationManager.AppSettings[$"Service_{key}_LogoPath"] ?? string.Empty,
                     ServiceName = ConfigurationManager.AppSettings[$"Service_{key}_ServiceName"] ?? string.Empty,
                     LogFolderPath = ConfigurationManager.AppSettings[$"Service_{key}_LogFolder"] ?? string.Empty,
-                    ExternalConfigPath = ConfigurationManager.AppSettings[$"Service_{key}_ConfigPath"] ?? string.Empty
+                    ExternalConfigPath = ConfigurationManager.AppSettings[$"Service_{key}_ConfigPath"] ?? string.Empty,
+                    HasOrdersPanel = bool.TryParse(ConfigurationManager.AppSettings[$"Service_{key}_HasOrdersPanel"], out var hasOrdersPanel) && hasOrdersPanel
                 });
             }
 

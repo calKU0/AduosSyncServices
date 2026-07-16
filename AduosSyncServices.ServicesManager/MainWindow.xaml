@@ -1,8 +1,12 @@
 ﻿<Window x:Class="AduosSyncServices.ServicesManager.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Menedżer serwisów synchronizacji" Height="800" Width="1400" Loaded="Window_Loaded">
+        xmlns:helpers="clr-namespace:AduosSyncServices.ServicesManager.Helpers"
+        xmlns:controls="clr-namespace:AduosSyncServices.ServicesManager.Controls"
+        Title="Menedżer serwisów synchronizacji" Height="800" Width="1400" WindowState="Maximized" Loaded="Window_Loaded"
+        FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="14">
     <Window.Resources>
+        <helpers:BooleanToVisibilityConverter x:Key="BoolToVis" />
         <!-- Styles -->
         <Style x:Key="NavButtonStyle" TargetType="Button">
             <Setter Property="Padding" Value="10" />
@@ -17,12 +21,13 @@
             <Setter Property="Margin" Value="6" />
         </Style>
         <Style x:Key="NavRadioButtonStyle" TargetType="RadioButton">
-            <Setter Property="Padding" Value="10" />
+            <Setter Property="Padding" Value="12,10" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
-            <Setter Property="Margin" Value="6,4" />
-            <Setter Property="Foreground" Value="Black" />
-            <Setter Property="Background" Value="#FFFFFF" />
-            <Setter Property="BorderBrush" Value="#B0B6C0" />
+            <Setter Property="Margin" Value="0,3" />
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="Foreground" Value="#374151" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -32,27 +37,23 @@
                         BorderBrush="{TemplateBinding BorderBrush}"
                         BorderThickness="{TemplateBinding BorderThickness}"
                         SnapsToDevicePixels="True"
-                        CornerRadius="6">
+                        CornerRadius="8">
                             <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center" Margin="{TemplateBinding Padding}" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <!-- Hover effect -->
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#D0D8E0" />
-                                <Setter TargetName="border" Property="Effect">
-                                    <Setter.Value>
-                                        <DropShadowEffect Color="Black" BlurRadius="6" ShadowDepth="1" Opacity="0.2" />
-                                    </Setter.Value>
-                                </Setter>
+                                <Setter TargetName="border" Property="Background" Value="#EFF6FF" />
+                                <Setter TargetName="border" Property="BorderBrush" Value="#DBEAFE" />
                             </Trigger>
                             <!-- Checked (selected) -->
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#5A7DA7" />
-                                <Setter TargetName="border" Property="BorderBrush" Value="#3B5C88" />
+                                <Setter TargetName="border" Property="Background" Value="#3B82F6" />
+                                <Setter TargetName="border" Property="BorderBrush" Value="#2563EB" />
                                 <Setter Property="Foreground" Value="White" />
                                 <Setter TargetName="border" Property="Effect">
                                     <Setter.Value>
-                                        <DropShadowEffect Color="Black" BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
+                                        <DropShadowEffect Color="#1D4ED8" BlurRadius="10" ShadowDepth="1" Opacity="0.3" />
                                     </Setter.Value>
                                 </Setter>
                             </Trigger>
@@ -60,6 +61,146 @@
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+        <Style x:Key="PrimaryActionButtonStyle" TargetType="Button">
+            <Setter Property="Padding" Value="16,9" />
+            <Setter Property="Margin" Value="4" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" Background="#3B82F6" CornerRadius="8" SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#2563EB" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#1D4ED8" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Background" Value="#D1D5DB" />
+                                <Setter Property="Foreground" Value="#9CA3AF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- Shared base for the round-cornered Start/Stop/Restart service control buttons -->
+        <Style x:Key="ServiceControlButtonBaseStyle" TargetType="Button">
+            <Setter Property="Width" Value="56" />
+            <Setter Property="Height" Value="46" />
+            <Setter Property="Margin" Value="4" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style x:Key="StartButtonStyle" TargetType="Button" BasedOn="{StaticResource ServiceControlButtonBaseStyle}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" Background="#16A34A" CornerRadius="8" SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#15803D" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#166534" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Background" Value="#D1D5DB" />
+                                <Setter Property="Foreground" Value="#9CA3AF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="StopButtonStyle" TargetType="Button" BasedOn="{StaticResource ServiceControlButtonBaseStyle}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" Background="#DC2626" CornerRadius="8" SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#B91C1C" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#991B1B" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Background" Value="#D1D5DB" />
+                                <Setter Property="Foreground" Value="#9CA3AF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="RestartButtonStyle" TargetType="Button" BasedOn="{StaticResource ServiceControlButtonBaseStyle}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" Background="#3B82F6" CornerRadius="8" SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#2563EB" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#1D4ED8" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Background" Value="#D1D5DB" />
+                                <Setter Property="Foreground" Value="#9CA3AF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- Modern card style for the service-selection overlay tiles -->
+        <Style x:Key="ServiceCardButtonStyle" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" Background="White" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="14" SnapsToDevicePixels="True">
+                            <ContentPresenter Margin="{TemplateBinding Padding}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="BorderBrush" Value="#3B82F6" />
+                                <Setter TargetName="border" Property="Effect">
+                                    <Setter.Value>
+                                        <DropShadowEffect Color="#3B82F6" BlurRadius="16" ShadowDepth="0" Opacity="0.25" />
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="FadeInOnLoadStyle" TargetType="FrameworkElement">
+            <Style.Triggers>
+                <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                    <BeginStoryboard>
+                        <Storyboard>
+                            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="0:0:0.25" />
+                        </Storyboard>
+                    </BeginStoryboard>
+                </EventTrigger>
+            </Style.Triggers>
         </Style>
         <Style x:Key="ListViewItemStyle" TargetType="ListViewItem">
             <Setter Property="Background" Value="White" />
@@ -111,13 +252,14 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <Button Margin="10"
-                                    Padding="6"
+                                    Padding="12"
                                     Width="240" Height="240"
+                                    Style="{StaticResource ServiceCardButtonStyle}"
                                     Command="{Binding DataContext.SelectServiceCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                     CommandParameter="{Binding}">
                                 <StackPanel>
                                     <Image Source="{Binding LogoPath}" Width="180" Height="180" HorizontalAlignment="Center" />
-                                    <TextBlock Text="{Binding Name}" HorizontalAlignment="Center" Margin="0,6,0,0" />
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="#374151" HorizontalAlignment="Center" Margin="0,8,0,0" />
                                 </StackPanel>
                             </Button>
                         </DataTemplate>
@@ -133,7 +275,7 @@
             </Grid.ColumnDefinitions>
 
             <!-- Left navigation panel -->
-            <Border Grid.Column="0" Background="#E0E4EA" BorderBrush="#B0B6C0" BorderThickness="0,0,1,0" Padding="8">
+            <Border Grid.Column="0" Background="#F9FAFB" BorderBrush="#E5E7EB" BorderThickness="0,0,1,0" Padding="10">
                 <DockPanel>
 
                     <!-- Top header + nav buttons -->
@@ -158,16 +300,20 @@
                                       SelectedValuePath="Id"
                                       SelectedItem="{Binding SelectedService, Mode=TwoWay}" />
                         </Grid>
-                        <TextBlock x:Name="ServiceNameTextBox" Text="..." FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" Margin="6,6,6,0" />
-                        <TextBlock Text="Panel" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" />
+                        <TextBlock x:Name="ServiceNameTextBox" Text="..." FontSize="18" FontWeight="Bold" Foreground="#111827" HorizontalAlignment="Center" Margin="6,10,6,0" />
+                        <TextBlock Text="Panel" FontSize="18" FontWeight="Bold" Foreground="#111827" HorizontalAlignment="Center" />
 
-                        <!-- Nav buttons -->
-                        <StackPanel Margin="6,20,6,6">
-                            <RadioButton x:Name="BtnShowLogs" Style="{StaticResource NavRadioButtonStyle}" GroupName="NavGroup" Command="{Binding ShowLogsCommand}">
-                                Podgląd logów
+                        <!-- Nav buttons: service-specific panels first, Configuration second-to-last, Logs last -->
+                        <StackPanel Margin="0,20,0,6">
+                            <RadioButton x:Name="BtnShowOrders" Style="{StaticResource NavRadioButtonStyle}" GroupName="NavGroup" Command="{Binding ShowOrdersCommand}"
+                                         Visibility="{Binding SelectedService.HasOrdersPanel, Converter={StaticResource BoolToVis}}">
+                                Zarządzanie zamówieniami
                             </RadioButton>
                             <RadioButton x:Name="BtnShowConfig" Style="{StaticResource NavRadioButtonStyle}" GroupName="NavGroup" Command="{Binding ShowConfigCommand}">
                                 Konfiguracja serwisu
+                            </RadioButton>
+                            <RadioButton x:Name="BtnShowLogs" Style="{StaticResource NavRadioButtonStyle}" GroupName="NavGroup" Command="{Binding ShowLogsCommand}">
+                                Podgląd logów
                             </RadioButton>
                         </StackPanel>
                     </StackPanel>
@@ -175,36 +321,41 @@
                     <!-- Bottom controls -->
                     <StackPanel DockPanel.Dock="Bottom" Margin="6" Orientation="Vertical" VerticalAlignment="Bottom">
 
+                        <!-- Client logo -->
+                        <Image Source="pack://siteoforigin:,,,/Resources/client-logo.png" Height="60" Stretch="Uniform" HorizontalAlignment="Center" Margin="0,0,0,12" />
+
                         <!-- Service control buttons in one row -->
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,10">
-                            <Button x:Name="BtnStartService" Width="50" Height="40" Margin="4" Command="{Binding StartServiceCommand}">
+                            <Button x:Name="BtnStartService" Style="{StaticResource StartButtonStyle}" Command="{Binding StartServiceCommand}">
                                 <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
-                                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE768;" FontSize="16" HorizontalAlignment="Center" />
+                                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE768;" FontSize="16" HorizontalAlignment="Center" Foreground="White" />
                                     <!-- Play icon -->
-                                    <TextBlock Text="Start" FontSize="10" HorizontalAlignment="Center" />
+                                    <TextBlock Text="Start" FontSize="10" HorizontalAlignment="Center" Foreground="White" />
                                 </StackPanel>
                             </Button>
-                            <Button x:Name="BtnStopService" Width="50" Height="40" Margin="4" Command="{Binding StopServiceCommand}">
+                            <Button x:Name="BtnStopService" Style="{StaticResource StopButtonStyle}" Command="{Binding StopServiceCommand}">
                                 <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
-                                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE71A;" FontSize="16" HorizontalAlignment="Center" />
+                                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE71A;" FontSize="16" HorizontalAlignment="Center" Foreground="White" />
                                     <!-- Stop icon -->
-                                    <TextBlock Text="Stop" FontSize="10" HorizontalAlignment="Center" />
+                                    <TextBlock Text="Stop" FontSize="10" HorizontalAlignment="Center" Foreground="White" />
                                 </StackPanel>
                             </Button>
-                            <Button x:Name="BtnRestartService" Width="50" Height="40" Margin="4" Command="{Binding RestartServiceCommand}">
+                            <Button x:Name="BtnRestartService" Style="{StaticResource RestartButtonStyle}" Command="{Binding RestartServiceCommand}">
                                 <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
-                                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE72C;" FontSize="16" HorizontalAlignment="Center" />
+                                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE72C;" FontSize="16" HorizontalAlignment="Center" Foreground="White" />
                                     <!-- Refresh icon -->
-                                    <TextBlock Text="Restart" FontSize="10" HorizontalAlignment="Center" />
+                                    <TextBlock Text="Restart" FontSize="10" HorizontalAlignment="Center" Foreground="White" />
                                 </StackPanel>
                             </Button>
                         </StackPanel>
 
                         <!-- Service status -->
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                            <Ellipse x:Name="ServiceStatusDot" Width="12" Height="12" Fill="Red" Margin="0,0,6,0" />
-                            <TextBlock x:Name="ServiceStatusText" Text="Offline" VerticalAlignment="Center" />
-                        </StackPanel>
+                        <Border CornerRadius="14" Padding="12,5" Background="White" BorderBrush="#E5E7EB" BorderThickness="1" HorizontalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <Ellipse x:Name="ServiceStatusDot" Width="10" Height="10" Fill="Red" Margin="0,0,6,0" />
+                                <TextBlock x:Name="ServiceStatusText" Text="Offline" VerticalAlignment="Center" FontWeight="Medium" Foreground="#374151" />
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </DockPanel>
             </Border>
@@ -221,7 +372,7 @@
 
                         <Grid>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="220" />
+                                <ColumnDefinition Width="280" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
 
@@ -238,7 +389,7 @@
                                             <GridView>
                                                 <GridViewColumn Header="Data" Width="Auto" DisplayMemberBinding="{Binding Name}" />
                                                 <GridViewColumn Header="Ostrzeżenia" Width="Auto" DisplayMemberBinding="{Binding WarningsCount}" />
-                                                <GridViewColumn Header="Błędy" Width="53" DisplayMemberBinding="{Binding ErrorsCount}" />
+                                                <GridViewColumn Header="Błędy" Width="70" DisplayMemberBinding="{Binding ErrorsCount}" />
                                             </GridView>
                                         </ListView.View>
                                     </ListView>
@@ -261,37 +412,20 @@
                                           IsChecked="{Binding ShowOnlyWarningsAndErrors, Mode=TwoWay}" />
                                     </StackPanel>
 
-                                    <ListBox Grid.Row="1"
+                                    <!-- A single RichTextBox (one Paragraph per log line) instead of a ListBox of
+                                         per-line TextBoxes: text selection in WPF cannot span two separate controls,
+                                         so selecting/copying a range across multiple lines needs them to live in one
+                                         document. Populated/scrolled entirely from code-behind - see MainWindow.Logs.cs. -->
+                                    <RichTextBox Grid.Row="1"
                                      x:Name="IcLogLines"
-                                     ItemsSource="{Binding}"
-                                     VirtualizingStackPanel.IsVirtualizing="True"
-                                     VirtualizingStackPanel.VirtualizationMode="Recycling"
-                                     ScrollViewer.CanContentScroll="True"
-                                     ScrollViewer.VerticalScrollBarVisibility="Visible"
-                                     BorderThickness="0">
-                                        <ListBox.ItemTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding Message}" TextWrapping="Wrap" Margin="2">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <Setter Property="Foreground" Value="Black" />
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding Level}" Value="Information">
-                                                                    <Setter Property="Foreground" Value="Green" />
-                                                                </DataTrigger>
-                                                                <DataTrigger Binding="{Binding Level}" Value="Warning">
-                                                                    <Setter Property="Foreground" Value="Orange" />
-                                                                </DataTrigger>
-                                                                <DataTrigger Binding="{Binding Level}" Value="Error">
-                                                                    <Setter Property="Foreground" Value="Red" />
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
-                                            </DataTemplate>
-                                        </ListBox.ItemTemplate>
-                                    </ListBox>
+                                     IsReadOnly="True"
+                                     IsReadOnlyCaretVisible="True"
+                                     BorderThickness="0"
+                                     Padding="2"
+                                     VerticalScrollBarVisibility="Visible"
+                                     HorizontalScrollBarVisibility="Disabled"
+                                     IsUndoEnabled="False"
+                                     SelectionBrush="#3B82F6" />
                                 </Grid>
                             </Border>
                         </Grid>
@@ -303,6 +437,266 @@
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <StackPanel x:Name="ConfigStackPanel" />
                     </ScrollViewer>
+                </Grid>
+
+                <!-- Orders management view - hidden by default -->
+                <Grid x:Name="OrdersViewContainer" Visibility="Collapsed" Margin="8" Style="{StaticResource FadeInOnLoadStyle}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <!-- Toolbar: filters + actions -->
+                    <Border Grid.Row="0" BorderBrush="#D1D5DB" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,8" Background="White">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <controls:MultiSelectFilterControl x:Name="CbStatusFilter" Width="170" Margin="0,0,12,0"
+                                                                    Header="Status zamówienia" SelectionChanged="Filter_SelectionChanged" />
+                                <controls:MultiSelectFilterControl x:Name="CbRealizeStatusFilter" Width="190" Margin="0,0,12,0"
+                                                                    Header="Status realizacji" SelectionChanged="Filter_SelectionChanged" />
+                                <controls:MultiSelectFilterControl x:Name="CbSentToExternalFilter" Width="170" Margin="0,0,12,0"
+                                                                    Header="Czy zamówione u dostawcy" SelectionChanged="Filter_SelectionChanged" />
+                                <controls:MultiSelectFilterControl x:Name="CbPaymentTypeFilter" Width="190" Margin="0,0,12,0"
+                                                                    Header="Metoda płatności" SelectionChanged="Filter_SelectionChanged" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <Button x:Name="BtnRefreshOrders" Style="{StaticResource PrimaryActionButtonStyle}" Content="Odśwież" Click="BtnRefreshOrders_Click" />
+                                <Button x:Name="BtnPlaceOrder" Style="{StaticResource PrimaryActionButtonStyle}" Content="Złóż zamówienie u dostawcy" Click="BtnPlaceOrder_Click" IsEnabled="False" />
+                                <TextBlock x:Name="SelectedOrdersCountText" Text="Zaznaczono: 0" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="#6B7280" />
+                                <StackPanel x:Name="RefreshStatusPanel" Orientation="Horizontal" Visibility="Collapsed" Margin="12,0,0,0" VerticalAlignment="Center">
+                                    <controls:LoadingSpinner Width="18" Height="18" Margin="0,0,8,0" />
+                                    <TextBlock x:Name="RefreshStatusText" VerticalAlignment="Center" Foreground="#374151" />
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Orders grid: DataGrid (not ListView/GridView) specifically because only DataGrid supports
+                         native Auto/* column sizing - Auto columns fit their content+header, the "*" column
+                         (Nr śledzenia) absorbs whatever width is left so the grid always fills 100% of the window. -->
+                    <Border Grid.Row="1" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Padding="4" Background="White">
+                        <DataGrid x:Name="LvOrders"
+                                  AutoGenerateColumns="False"
+                                  CanUserAddRows="False"
+                                  CanUserDeleteRows="False"
+                                  CanUserSortColumns="False"
+                                  HeadersVisibility="Column"
+                                  GridLinesVisibility="Horizontal"
+                                  HorizontalGridLinesBrush="#E5E7EB"
+                                  BorderThickness="0"
+                                  RowHeaderWidth="0"
+                                  RowHeight="44"
+                                  IsReadOnly="True"
+                                  SelectionUnit="FullRow"
+                                  Background="White"
+                                  EnableRowVirtualization="True"
+                                  VirtualizingPanel.IsVirtualizing="True"
+                                  VirtualizingPanel.VirtualizationMode="Recycling">
+                            <!-- DataGridCell's CellStyle triggers (Background/Padding) do not reliably render in this
+                                 DataGrid theme, so every column below paints its own padding on a Border inside the
+                                 cell's DataTemplate instead - the same mechanism already used for the Dropshipping badge. -->
+                            <DataGrid.Resources>
+                                <Style x:Key="OrderCellBorderStyle" TargetType="Border">
+                                    <Setter Property="Padding" Value="16,10" />
+                                    <Setter Property="HorizontalAlignment" Value="Stretch" />
+                                    <Setter Property="VerticalAlignment" Value="Stretch" />
+                                    <Setter Property="Background" Value="White" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=DataGridRow}, Path=IsMouseOver}" Value="True">
+                                            <Setter Property="Background" Value="#EFF6FF" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=DataGridRow}, Path=IsSelected}" Value="True">
+                                            <Setter Property="Background" Value="#3B82F6" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                                <Style x:Key="OrderCellTextStyle" TargetType="TextBlock">
+                                    <Setter Property="VerticalAlignment" Value="Center" />
+                                    <Setter Property="Foreground" Value="#111827" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=DataGridRow}, Path=IsSelected}" Value="True">
+                                            <Setter Property="Foreground" Value="White" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGrid.Resources>
+                            <DataGrid.CellStyle>
+                                <Style TargetType="DataGridCell">
+                                    <Setter Property="BorderThickness" Value="0" />
+                                    <Setter Property="Padding" Value="0" />
+                                </Style>
+                            </DataGrid.CellStyle>
+                            <DataGrid.ColumnHeaderStyle>
+                                <Style TargetType="DataGridColumnHeader">
+                                    <Setter Property="Background" Value="#F3F4F6" />
+                                    <Setter Property="Padding" Value="16,10" />
+                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Left" />
+                                    <Setter Property="BorderThickness" Value="0,0,0,1" />
+                                    <Setter Property="BorderBrush" Value="#E5E7EB" />
+                                </Style>
+                            </DataGrid.ColumnHeaderStyle>
+                            <DataGrid.Columns>
+                                <DataGridTemplateColumn Width="Auto" CanUserResize="False">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource OrderCellBorderStyle}">
+                                                <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" IsEnabled="{Binding CanSelect}" HorizontalAlignment="Center" VerticalAlignment="Center" Click="OrderCheckBox_Click">
+                                                    <CheckBox.Style>
+                                                        <Style TargetType="CheckBox">
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding CanSelect}" Value="False">
+                                                                    <Setter Property="ToolTip" Value="{Binding CannotSelectReason}" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </CheckBox.Style>
+                                                </CheckBox>
+                                            </Border>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <!-- MaxWidth caps this column so a long Allegro id can't grow unbounded and starve the
+                                     Nr śledzenia "*" column below - it trims with an ellipsis instead, full value on hover. -->
+                                <DataGridTemplateColumn Header="Nr Allegro" Width="Auto" MaxWidth="140">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource OrderCellBorderStyle}">
+                                                <TextBlock Text="{Binding AllegroId}" Style="{StaticResource OrderCellTextStyle}" TextTrimming="CharacterEllipsis" ToolTip="{Binding AllegroId}" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Klient" Width="Auto">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource OrderCellBorderStyle}">
+                                                <TextBlock Text="{Binding FullName}" Style="{StaticResource OrderCellTextStyle}" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Kwota" Width="Auto">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource OrderCellBorderStyle}">
+                                                <TextBlock Text="{Binding AmountDisplay}" Style="{StaticResource OrderCellTextStyle}" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Status" Width="Auto">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource OrderCellBorderStyle}">
+                                                <TextBlock Text="{Binding StatusDisplay}" Style="{StaticResource OrderCellTextStyle}" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Status realizacji" Width="Auto">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource OrderCellBorderStyle}">
+                                                <TextBlock Text="{Binding RealizeStatusDisplay}" Style="{StaticResource OrderCellTextStyle}" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Metoda dostawy" Width="Auto">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource OrderCellBorderStyle}">
+                                                <TextBlock Text="{Binding DeliveryMethodName}" Style="{StaticResource OrderCellTextStyle}" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Płatność" Width="Auto">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource OrderCellBorderStyle}">
+                                                <TextBlock Text="{Binding PaymentTypeDisplay}" Style="{StaticResource OrderCellTextStyle}" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Nr zam. u dostawcy" Width="Auto">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource OrderCellBorderStyle}">
+                                                <TextBlock Text="{Binding ExternalOrderNumber}" Style="{StaticResource OrderCellTextStyle}" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Status u dostawcy" Width="Auto">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource OrderCellBorderStyle}">
+                                                <TextBlock Text="{Binding ExternalOrderStatus}" Style="{StaticResource OrderCellTextStyle}" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Kurier dostawcy" Width="Auto">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource OrderCellBorderStyle}">
+                                                <TextBlock Text="{Binding ExternalDeliveryName}" Style="{StaticResource OrderCellTextStyle}" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Dropshipping" Width="Auto">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource OrderCellBorderStyle}">
+                                                <Border CornerRadius="12" Padding="14,6" MinWidth="52" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="Background" Value="#FEE2E2" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsDropshipping}" Value="True">
+                                                                    <Setter Property="Background" Value="#DCFCE7" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding IsDropshipping}" Value="{x:Null}">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                    <TextBlock FontWeight="SemiBold" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Text" Value="NIE" />
+                                                                <Setter Property="Foreground" Value="#B91C1C" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsDropshipping}" Value="True">
+                                                                        <Setter Property="Text" Value="TAK" />
+                                                                        <Setter Property="Foreground" Value="#15803D" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                </Border>
+                                            </Border>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Nr śledzenia" Width="*" MinWidth="120">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource OrderCellBorderStyle}">
+                                                <TextBlock Text="{Binding TrackingNumbers}" Style="{StaticResource OrderCellTextStyle}" TextTrimming="CharacterEllipsis" ToolTip="{Binding TrackingNumbers}" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Border>
                 </Grid>
             </Grid>
         </Grid>
