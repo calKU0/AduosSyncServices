@@ -8,11 +8,11 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 
-namespace AduosSyncServices.Infrastructure.Services
+namespace AduosSyncServices.Infrastructure.Clients
 {
-    public class AllegroAuthService
+    public class AllegroAuthClient
     {
-        private ILogger<AllegroAuthService> _logger;
+        private ILogger<AllegroAuthClient> _logger;
         private readonly AllegroApiCredentials _settings;
         private readonly ITokenRepository _tokenRepo;
         private readonly HttpClient _http;
@@ -24,7 +24,7 @@ namespace AduosSyncServices.Infrastructure.Services
             DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
         };
 
-        public AllegroAuthService(ILogger<AllegroAuthService> logger, IOptions<AllegroApiCredentials> settings, ITokenRepository tokenRepo, HttpClient httpClient)
+        public AllegroAuthClient(ILogger<AllegroAuthClient> logger, IOptions<AllegroApiCredentials> settings, ITokenRepository tokenRepo, HttpClient httpClient)
         {
             _logger = logger;
             _settings = settings.Value;

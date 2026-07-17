@@ -1,5 +1,6 @@
+using AduosSyncServices.Contracts.Clients;
 using AduosSyncServices.Contracts.Interfaces;
-using AduosSyncServices.Infrastructure.Services;
+using AduosSyncServices.Infrastructure.Clients;
 using Allegro.Aduos.Gaska.ProductsService.Services.Gaska.Interfaces;
 using Allegro.Aduos.Gaska.ProductsService.Settings;
 using Microsoft.Extensions.Options;
@@ -53,8 +54,8 @@ public class Worker : BackgroundService
     private async Task RunSyncCycleAsync(IServiceProvider services, CancellationToken ct)
     {
         var gaskaApiService = services.GetRequiredService<IGaskaApiService>();
-        var allegroApiClient = services.GetRequiredService<AllegroApiClient>();
-        var allegroAuthService = services.GetRequiredService<AllegroAuthService>();
+        var allegroApiClient = services.GetRequiredService<IAllegroApiClient>();
+        var allegroAuthService = services.GetRequiredService<AllegroAuthClient>();
 
         var offerService = services.GetRequiredService<IAllegroOfferService>();
         var categoryService = services.GetRequiredService<IAllegroCategoryService>();

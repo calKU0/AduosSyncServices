@@ -2,6 +2,7 @@
   <Project Path="AduosSyncServices.Contracts/AduosSyncServices.Contracts.csproj" />
   <Project Path="AduosSyncServices.Infrastructure/AduosSyncServices.Infrastructure.csproj" />
   <Project Path="AduosSyncServices.ServicesManager/AduosSyncServices.ServicesManager.csproj" />
+  <Project Path="Allegro.Aduos.Gaska.OrdersService/Allegro.Aduos.Gaska.OrdersService.csproj" Id="86c5c2c5-5f28-4303-9091-15204494eb43" />
   <Project Path="Allegro.Aduos.Gaska.ProductsService.Tests/Allegro.Aduos.Gaska.ProductsService.Tests.csproj" />
   <Project Path="Allegro.Aduos.Gaska.ProductsService/Allegro.Aduos.Gaska.ProductsService.csproj" />
 </Solution>

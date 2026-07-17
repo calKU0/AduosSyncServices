@@ -104,8 +104,19 @@ namespace AduosSyncServices.ServicesManager
             CbServiceSelector.Visibility = Visibility.Visible;
             ShowMainNavigation();
 
-            BtnShowLogs.IsChecked = true;
-            _ = ShowLogsViewAsync();
+            // Open whichever nav button is first/topmost for this service (order: Orders if present, then
+            // Configuration, then Logs last) instead of always defaulting to the last one, Logs.
+            if (service.HasOrdersPanel)
+            {
+                BtnShowOrders.IsChecked = true;
+                _ = ShowOrdersViewAsync();
+            }
+            else
+            {
+                BtnShowConfig.IsChecked = true;
+                ShowConfigViewInternal();
+            }
+
             _ = RefreshServiceStatusAsync(_serviceStatusCts.Token);
         }
 

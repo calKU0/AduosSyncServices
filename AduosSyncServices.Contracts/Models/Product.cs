@@ -24,6 +24,7 @@ namespace AduosSyncServices.Contracts.Models
         public int DefaultAllegroCategory { get; set; }
         public decimal Package { get; set; }
         public bool BuildCompatibilitySet { get; set; } = true;
+        public bool IsArchived { get; set; }
         public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 
         public DateTime UpdatedDate { get; set; } = DateTime.UtcNow;

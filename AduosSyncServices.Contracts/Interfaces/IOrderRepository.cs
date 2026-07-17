@@ -6,11 +6,11 @@ namespace AduosSyncServices.Contracts.Interfaces
     {
         public Task SaveAllegroOrder(AllegroOrder order);
 
-        public Task MarkAsOrderedInExternalCompany(int orderId, int externalOrderId);
+        public Task MarkAsOrderedInExternalCompany(int orderId, int externalOrderId, bool isDropshipping);
 
-        public Task<List<AllegroOrder>> GetOrdersToUpdateExternalInfo(List<string> shippingRates);
+        public Task<List<AllegroOrder>> GetOrdersToUpdateExternalInfo();
 
-        public Task<List<AllegroOrder>> GetPendingOrdersForExternalCompany(int delayMinutes);
+        public Task<List<AllegroOrder>> GetAllOrdersForExternalCompany();
 
         public Task UpdateOrderExternalInfo(AllegroOrder order);
 

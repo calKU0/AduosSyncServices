@@ -1,6 +1,6 @@
-﻿namespace Allegro.Aduos.Gaska.ProductsService.DTOs.GaskaApi
+﻿namespace AduosSyncServices.Contracts.DTOs.GaskaApi
 {
-    public class ProductsChangedReponse
+    public class GaskaGetProductsChangedResponse
     {
         public List<ProductChanged> Products { get; set; }
     }

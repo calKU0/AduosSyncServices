@@ -67,6 +67,7 @@ namespace AduosSyncServices.ServicesManager
                     ConfigStackPanel.Children.Add(groupBox);
                 }
                 LoadDeliveries(config);
+                LoadAllegroDeliveryNames(config);
 
                 var saveButton = new Button
                 {
@@ -123,6 +124,30 @@ namespace AduosSyncServices.ServicesManager
             ConfigStackPanel.Children.Add(groupBox);
         }
 
+        private void LoadAllegroDeliveryNames(IConfiguration config)
+        {
+            var section = config.GetSection("AppSettings:AllegroDeliveryNames");
+            _allegroDeliveryNamesSectionExists = section.Exists();
+            if (!_allegroDeliveryNamesSectionExists)
+            {
+                _allegroDeliveryNamesEditor = null;
+                return;
+            }
+
+            var allegroDeliveryNames = section.Get<List<string>>() ?? new List<string>();
+
+            var groupBox = new GroupBox
+            {
+                Header = "Metody dostawy Allegro (Gąska)",
+                Margin = new Thickness(0, 6, 0, 6)
+            };
+
+            _allegroDeliveryNamesEditor = new Controls.DeliveryNameListEditor();
+            _allegroDeliveryNamesEditor.SetItems(allegroDeliveryNames);
+            groupBox.Content = _allegroDeliveryNamesEditor;
+            ConfigStackPanel.Children.Add(groupBox);
+        }
+
         private void LoadMarginRanges(IConfiguration config, StackPanel groupPanel)
         {
             if (!config.GetSection("PriceSettings").Exists())
@@ -171,9 +196,15 @@ namespace AduosSyncServices.ServicesManager
 
                 var deliveries = BuildDeliveries(errors);
                 var marginRanges = BuildMarginRanges(errors);
+                var allegroDeliveryNames = BuildAllegroDeliveryNames(errors);
 
                 if (!TryShowValidationErrors(errors))
                     return false;
+
+                if (_allegroDeliveryNamesSectionExists)
+                {
+                    valuesToSave["AppSettings:AllegroDeliveryNames"] = JsonSerializer.Serialize(allegroDeliveryNames);
+                }
 
                 if (_deliveriesSectionExists)
                 {
@@ -234,6 +265,18 @@ namespace AduosSyncServices.ServicesManager
             return SaveCurrentConfig(showSuccessMessage: false);
         }
 
+
+        private List<string> BuildAllegroDeliveryNames(List<string> errors)
+        {
+            if (!_allegroDeliveryNamesSectionExists || _allegroDeliveryNamesEditor == null)
+                return new List<string>();
+
+            return _allegroDeliveryNamesEditor.GetInputs()
+                .Select(n => n.Trim())
+                .Where(n => n.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
 
         private List<Delivery> BuildDeliveries(List<string> errors)
         {

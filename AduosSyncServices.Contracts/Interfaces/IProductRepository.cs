@@ -1,4 +1,5 @@
 ﻿using AduosSyncServices.Contracts.Models;
+using AduosSyncServices.Contracts.OrderPlacement;
 
 namespace AduosSyncServices.Contracts.Interfaces
 {
@@ -10,6 +11,8 @@ namespace AduosSyncServices.Contracts.Interfaces
         Task<bool> UpdateProductStockAsync(string productCode, int stock, CancellationToken ct);
         Task<bool> DeleteProduct(int productId, CancellationToken ct);
         Task<Product?> GetProductByIntegrationIdAsync(int integrationId, CancellationToken ct);
+
+        Task<List<Product>> GetProductsByIdsAsync(IEnumerable<int> productIds, CancellationToken ct);
 
         Task<List<Product>> GetProductsToUpload(int minProductStock, decimal minProductPrice, CancellationToken ct);
 
@@ -28,6 +31,12 @@ namespace AduosSyncServices.Contracts.Interfaces
 
         Task UpdateProductAllegroId(int productId, string allegroProductId, string allegroCategoryId, CancellationToken ct);
 
-        Task<int> DeleteProductsNotInIntegrationIdsAsync(IEnumerable<int> integrationIds, CancellationToken ct);
+        Task<int> ArchiveProductsNotInIntegrationIdsAsync(IEnumerable<int> integrationIds, CancellationToken ct);
+
+        Task<int> ArchiveOlderDuplicateProductsAsync(CancellationToken ct);
+
+        Task<int> DeleteArchivedProductsWithEndedOffersAsync(CancellationToken ct);
+
+        Task<List<OrderableProduct>> SearchOrderableProductsAsync(string searchTerm, int offset, CancellationToken ct);
     }
 }

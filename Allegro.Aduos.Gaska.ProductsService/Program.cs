@@ -1,9 +1,11 @@
+using AduosSyncServices.Contracts.Clients;
 using AduosSyncServices.Contracts.Interfaces;
 using AduosSyncServices.Contracts.Settings;
+using AduosSyncServices.Infrastructure.Clients;
 using AduosSyncServices.Infrastructure.Data;
+using AduosSyncServices.Infrastructure.Http;
 using AduosSyncServices.Infrastructure.Logging;
 using AduosSyncServices.Infrastructure.Repositories;
-using AduosSyncServices.Infrastructure.Services;
 using AduosSyncServices.Infrastructure.Settings;
 using Allegro.Aduos.Gaska.ProductsService.Constants;
 using Allegro.Aduos.Gaska.ProductsService.Services.Allegro;
@@ -14,8 +16,6 @@ using DbUp;
 using Microsoft.Extensions.Options;
 using Serilog;
 using System.Net.Http.Headers;
-using System.Security.Cryptography;
-using System.Text;
 
 var host = Host.CreateDefaultBuilder(args)
     .UseWindowsService(options =>
@@ -79,30 +79,29 @@ var host = Host.CreateDefaultBuilder(args)
         });
 
         // HttpClients
-        services.AddHttpClient<AllegroAuthService>(client =>
+        services.AddTransient<RetryHttpMessageHandler>();
+
+        services.AddHttpClient<AllegroAuthClient>(client =>
         {
             client.BaseAddress = new Uri(configuration["AllegroApiCredentials:AuthBaseUrl"]);
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/x-www-form-urlencoded"));
             client.DefaultRequestHeaders.UserAgent.ParseAdd(configuration["AllegroApiCredentials:UserAgent"]);
-        });
+        }).AddHttpMessageHandler<RetryHttpMessageHandler>();
 
-        services.AddHttpClient<AllegroApiClient>(client =>
+        services.AddHttpClient<IAllegroApiClient, AllegroApiClient>(client =>
         {
             client.BaseAddress = new Uri(configuration["AllegroApiCredentials:BaseUrl"]);
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.allegro.public.v1+json"));
             client.DefaultRequestHeaders.UserAgent.ParseAdd(configuration["AllegroApiCredentials:UserAgent"]);
-        });
+        }).AddHttpMessageHandler<RetryHttpMessageHandler>();
 
 
-        services.AddHttpClient<IGaskaApiService, GaskaApiService>((sp, client) =>
+        services.AddHttpClient<IGaskaApiClient, GaskaApiClient>((sp, client) =>
         {
             var gaskaApi = sp.GetRequiredService<IOptions<GaskaApiCredentials>>().Value;
             client.BaseAddress = new Uri(gaskaApi.BaseUrl);
-            var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{gaskaApi.Acronym}|{gaskaApi.Person}:{gaskaApi.Password}"));
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
-            client.DefaultRequestHeaders.Add("X-Signature", GetSignature(gaskaApi));
-            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        });
+            GaskaApiAuthHelper.ApplyAuthHeaders(client, gaskaApi);
+        }).AddHttpMessageHandler<RetryHttpMessageHandler>();
 
         // Repositories
         services.AddScoped<ITokenRepository, DbTokenRepository>();
@@ -113,6 +112,7 @@ var host = Host.CreateDefaultBuilder(args)
         services.AddScoped<IParameterRepository, ParameterRepository>();
 
         // Services
+        services.AddScoped<IGaskaApiService, GaskaApiService>();
         services.AddScoped<IAllegroOfferService, AllegroOfferService>();
         services.AddScoped<IAllegroCategoryService, AllegroCategoryService>();
         services.AddScoped<IAllegroParametersService, AllegroParametersService>();
@@ -130,14 +130,3 @@ var host = Host.CreateDefaultBuilder(args)
     .Build();
 
 host.Run();
-
-// Helper to generate signature
-static string GetSignature(GaskaApiCredentials apiSettings)
-{
-    string body = $"acronym={apiSettings.Acronym}&person={apiSettings.Person}&password={apiSettings.Password}&key={apiSettings.Key}";
-    using var sha = SHA256.Create();
-    byte[] bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(body));
-    var builder = new StringBuilder();
-    foreach (var b in bytes) builder.Append(b.ToString("x2"));
-    return builder.ToString();
-}

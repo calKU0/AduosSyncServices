@@ -1,4 +1,5 @@
-﻿using AduosSyncServices.Contracts.Data.Enums;
+﻿using AduosSyncServices.Contracts.Data;
+using AduosSyncServices.Contracts.Data.Enums;
 using AduosSyncServices.Contracts.DTOs.Allegro;
 using AduosSyncServices.Contracts.Models;
 using AduosSyncServices.Contracts.Settings;
@@ -26,7 +27,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                 allegroSettings,
                 appSettings,
                 priceSettings,
-                publicationStatus: "ACTIVE",
+                publicationStatus: AllegroOfferStatuses.Active,
                 startingAt: DateTime.UtcNow,
                 stockOverride: null);
         }
@@ -39,6 +40,15 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
             PriceSettings priceSettings)
         {
             var product = offer.Product;
+
+            if (product.IsArchived || product.InStock < appSettings.MinProductStock || product.PriceNet < appSettings.MinProductPriceNet)
+            {
+                return new ProductOfferRequest
+                {
+                    Publication = new Publication { Status = AllegroOfferStatuses.Ended }
+                };
+            }
+
             var quantity = GetPackageQuantity(product);
 
             return CreateOffer(
@@ -48,8 +58,8 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                 allegroSettings,
                 appSettings,
                 priceSettings,
-                publicationStatus: product.InStock >= appSettings.MinProductStock && product.PriceNet >= appSettings.MinProductPriceNet ? "ACTIVE" : "ENDED",
-                startingAt: offer.Status == "INACTIVE" ? DateTime.UtcNow : null,
+                publicationStatus: product.InStock >= appSettings.MinProductStock && product.PriceNet >= appSettings.MinProductPriceNet ? AllegroOfferStatuses.Active : AllegroOfferStatuses.Ended,
+                startingAt: offer.Status == AllegroOfferStatuses.Inactive ? DateTime.UtcNow : null,
                 stockOverride: Convert.ToInt32(Math.Floor(product.InStock)));
         }
 
@@ -89,7 +99,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                 Images = product.AllegroImages.DistinctBy(i => i.Url).Select(i => i.Url).ToList(),
                 Description = BuildDescription(product),
                 External = new External { Id = product.Code },
-                Publication = new Publication { Status = available < 1 ? "ENDED" : publicationStatus, StartingAt = startingAt },
+                Publication = new Publication { Status = available < 1 ? AllegroOfferStatuses.Ended : publicationStatus, StartingAt = startingAt },
                 Category = new() { Id = product.DefaultAllegroCategory.ToString() },
                 Delivery = new Delivery
                 {
@@ -323,10 +333,12 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
 
         private static Description BuildDescription(Product product)
         {
+            var logoUrl = product.AllegroImages.Last().Url;
             var description = new Description { Sections = new List<Section>() };
             var images = product.AllegroImages
                 .DistinctBy(i => i.Url)
                 .Select(i => i.Url)
+                .Where(url => url != logoUrl)
                 .ToList();
             var imageIndex = 0;
 
@@ -412,6 +424,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
             }
 
             description.Sections.Add(new Section { SectionItems = new List<SectionItem> { new() { Type = "TEXT", Content = nameH1Html } } });
+            description.Sections.Add(new Section { SectionItems = new List<SectionItem> { new() { Type = "IMAGE", Url = logoUrl } } });
 
             var descriptionSection = new StringBuilder()
                 .Append(nameH2Html)
@@ -431,6 +444,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
             };
 
             description.Sections.Add(new Section { SectionItems = descriptionSectionItems });
+            description.Sections.Add(new Section { SectionItems = new List<SectionItem> { new() { Type = "IMAGE", Url = logoUrl } } });
 
             while (imageIndex < images.Count)
             {
@@ -446,6 +460,15 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
 
                 // Add images section (image1,image2 etc.)
                 description.Sections.Add(new Section { SectionItems = sectionImageItems });
+
+                // Add logo section AFTER each image section
+                description.Sections.Add(new Section
+                {
+                    SectionItems = new List<SectionItem>
+                    {
+                        new() { Type = "IMAGE", Url = logoUrl }
+                    }
+                });
             }
 
             return description;

@@ -1,7 +1,7 @@
-﻿using AduosSyncServices.Contracts.DTOs.Allegro;
+﻿using AduosSyncServices.Contracts.Clients;
+using AduosSyncServices.Contracts.DTOs.Allegro;
 using AduosSyncServices.Contracts.Interfaces;
 using AduosSyncServices.Contracts.Models;
-using AduosSyncServices.Infrastructure.Services;
 
 namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
 {
@@ -10,9 +10,9 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
         private ILogger<AllegroCategoryService> _logger;
         private readonly IProductRepository _productRepo;
         private readonly ICategoryRepository _categoryRepo;
-        private readonly AllegroApiClient _apiClient;
+        private readonly IAllegroApiClient _apiClient;
 
-        public AllegroCategoryService(IProductRepository productRepo, ICategoryRepository categoryRepo, AllegroApiClient apiClient, ILogger<AllegroCategoryService> logger)
+        public AllegroCategoryService(IProductRepository productRepo, ICategoryRepository categoryRepo, IAllegroApiClient apiClient, ILogger<AllegroCategoryService> logger)
         {
             _productRepo = productRepo;
             _categoryRepo = categoryRepo;
@@ -98,7 +98,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                         nextPreferredChildId = "252204";
                 }
 
-                var result = await _apiClient.GetAsync<MatchingCategoriesResponse>($"/sale/matching-categories?name={product.Name}", ct);
+                var result = await _apiClient.GetMatchingCategories(product.Name, ct);
 
                 var categories = result?.MatchingCategories;
                 if (categories == null || !categories.Any()) return 0;
@@ -177,8 +177,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                 {
                     try
                     {
-                        var result = await _apiClient.GetAsync<CategoryParametersResponse>(
-                            $"/sale/categories/{category}/parameters", ct);
+                        var result = await _apiClient.GetCategoryParameters(category.ToString(), ct);
 
                         if (result?.Parameters == null || !result.Parameters.Any())
                         {

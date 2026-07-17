@@ -1,0 +1,263 @@
+<Window x:Class="AduosSyncServices.ServicesManager.OrderDetailsDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Szczegóły zamówienia" Height="760" Width="820" WindowStartupLocation="CenterOwner"
+        FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="14" Loaded="Window_Loaded">
+    <Window.Resources>
+        <!-- Shared styles (buttons, DataGrid pieces) live in App.xaml; below are styles specific to this dialog. -->
+        <Style x:Key="InfoLabelStyle" TargetType="TextBlock">
+            <Setter Property="Width" Value="150" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="#374151" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+        </Style>
+        <Style x:Key="InfoValueStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#111827" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style x:Key="InfoSectionHeaderStyle" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="16">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                    <TextBlock Text="{Binding AllegroId, StringFormat=Zamówienie {0}}" FontSize="18" FontWeight="Bold" VerticalAlignment="Center" />
+                    <Border CornerRadius="12" Padding="12,4" Margin="12,0,0,0" VerticalAlignment="Center">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="#E0E7FF" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Source}" Value="Manual">
+                                        <Setter Property="Background" Value="#FEF3C7" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <TextBlock Text="{Binding SourceDisplay}" FontWeight="SemiBold" FontSize="12">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#3730A3" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Source}" Value="Manual">
+                                            <Setter Property="Foreground" Value="#92400E" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Border>
+                </StackPanel>
+
+                <Grid Margin="0,0,0,20">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="24" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Dane odbiorcy" Style="{StaticResource InfoSectionHeaderStyle}" />
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="Klient:" Style="{StaticResource InfoLabelStyle}" />
+                            <TextBlock Text="{Binding FullName}" Style="{StaticResource InfoValueStyle}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="Firma:" Style="{StaticResource InfoLabelStyle}" />
+                            <TextBlock Text="{Binding Order.RecipientCompanyName}" Style="{StaticResource InfoValueStyle}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="Adres:" Style="{StaticResource InfoLabelStyle}" />
+                            <TextBlock Style="{StaticResource InfoValueStyle}">
+                                <Run Text="{Binding Order.RecipientStreet, Mode=OneWay}" />
+                                <LineBreak />
+                                <Run Text="{Binding Order.RecipientPostalCode, Mode=OneWay}" /><Run Text=" " /><Run Text="{Binding Order.RecipientCity, Mode=OneWay}" />
+                                <LineBreak />
+                                <Run Text="{Binding Order.RecipientCountry, Mode=OneWay}" />
+                            </TextBlock>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="Email:" Style="{StaticResource InfoLabelStyle}" />
+                            <TextBlock Text="{Binding Order.RecipientEmail}" Style="{StaticResource InfoValueStyle}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="Telefon:" Style="{StaticResource InfoLabelStyle}" />
+                            <TextBlock Text="{Binding Order.RecipientPhoneNumber}" Style="{StaticResource InfoValueStyle}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Status zamówienia" Style="{StaticResource InfoSectionHeaderStyle}" />
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="Status:" Style="{StaticResource InfoLabelStyle}" />
+                            <TextBlock Text="{Binding StatusDisplay}" Style="{StaticResource InfoValueStyle}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="Status realizacji:" Style="{StaticResource InfoLabelStyle}" />
+                            <TextBlock Text="{Binding RealizeStatusDisplay}" Style="{StaticResource InfoValueStyle}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="Metoda dostawy:" Style="{StaticResource InfoLabelStyle}" />
+                            <TextBlock Text="{Binding DeliveryMethodName}" Style="{StaticResource InfoValueStyle}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="Płatność:" Style="{StaticResource InfoLabelStyle}" />
+                            <TextBlock Text="{Binding PaymentTypeDisplay}" Style="{StaticResource InfoValueStyle}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="Kwota:" Style="{StaticResource InfoLabelStyle}" />
+                            <TextBlock Text="{Binding AmountDisplay}" Style="{StaticResource InfoValueStyle}" FontWeight="SemiBold" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="Data utworzenia:" Style="{StaticResource InfoLabelStyle}" />
+                            <TextBlock Text="{Binding CreatedAt, StringFormat={}{0:yyyy-MM-dd HH:mm}}" Style="{StaticResource InfoValueStyle}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+
+                <StackPanel x:Name="SupplierInfoPanel" Margin="0,0,0,20">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SentToExternalCompany}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+                    <TextBlock Text="Informacje u dostawcy" Style="{StaticResource InfoSectionHeaderStyle}" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                        <TextBlock Text="Nr zam. u dostawcy:" Style="{StaticResource InfoLabelStyle}" />
+                        <TextBlock Text="{Binding ExternalOrderNumber}" Style="{StaticResource InfoValueStyle}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                        <TextBlock Text="Status u dostawcy:" Style="{StaticResource InfoLabelStyle}" />
+                        <TextBlock Text="{Binding ExternalOrderStatus}" Style="{StaticResource InfoValueStyle}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                        <TextBlock Text="Kurier dostawcy:" Style="{StaticResource InfoLabelStyle}" />
+                        <TextBlock Text="{Binding ExternalDeliveryName}" Style="{StaticResource InfoValueStyle}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                        <TextBlock Text="Dropshipping:" Style="{StaticResource InfoLabelStyle}" />
+                        <TextBlock>
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource InfoValueStyle}">
+                                    <Setter Property="Text" Value="Nie" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsDropshipping}" Value="True">
+                                            <Setter Property="Text" Value="Tak" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsDropshipping}" Value="{x:Null}">
+                                            <Setter Property="Text" Value="-" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                        <TextBlock Text="Nr śledzenia:" Style="{StaticResource InfoLabelStyle}" />
+                        <TextBlock Text="{Binding TrackingNumbers}" Style="{StaticResource InfoValueStyle}" />
+                    </StackPanel>
+                </StackPanel>
+
+                <TextBlock Text="Pozycje zamówienia" Style="{StaticResource InfoSectionHeaderStyle}" />
+                <Border BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Padding="4" Margin="0,0,0,20" Background="White">
+                    <DataGrid x:Name="DgLineItems" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="220" RowHeight="36"
+                              HeadersVisibility="Column" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#E5E7EB"
+                              BorderThickness="0" RowHeaderWidth="0" CanUserAddRows="False" CanUserResizeColumns="False">
+                        <DataGrid.CellStyle>
+                            <Style TargetType="DataGridCell" BasedOn="{StaticResource ZeroPaddingDataGridCellStyle}" />
+                        </DataGrid.CellStyle>
+                        <DataGrid.ColumnHeaderStyle>
+                            <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource DialogGridHeaderStyle}" />
+                        </DataGrid.ColumnHeaderStyle>
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="Kod" Width="110">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource DialogCellBorderStyle}">
+                                            <TextBlock Text="{Binding Code}" Style="{StaticResource DialogCellTextStyle}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Code}" />
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Produkt" Width="*" MinWidth="160">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource DialogCellBorderStyle}">
+                                            <TextBlock Text="{Binding OfferName}" Style="{StaticResource DialogCellTextStyle}" TextTrimming="CharacterEllipsis" ToolTip="{Binding OfferName}" />
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Ilość" Width="70">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource DialogCellBorderStyle}">
+                                            <TextBlock Text="{Binding Quantity}" Style="{StaticResource DialogCellTextStyle}" />
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Jm" Width="50">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource DialogCellBorderStyle}">
+                                            <TextBlock Text="{Binding Unit}" Style="{StaticResource DialogCellTextStyle}" />
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Cena" Width="90">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource DialogCellBorderStyle}">
+                                            <TextBlock Text="{Binding PriceGross}" Style="{StaticResource DialogCellTextStyle}" TextTrimming="CharacterEllipsis" ToolTip="{Binding PriceGross}" />
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Border>
+
+                <Border x:Name="CannotPlacePanel" Background="#FEF2F2" BorderBrush="#FCA5A5" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,16">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding CanSelect}" Value="False">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <TextBlock Text="{Binding CannotPlaceReason}" Foreground="#991B1B" TextWrapping="Wrap" />
+                </Border>
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="BtnClose" Style="{StaticResource SecondaryButtonStyle}" Content="Zamknij" Click="BtnClose_Click" />
+                    <Button x:Name="BtnPlaceOrder" Content="Złóż zamówienie u dostawcy" Click="BtnPlaceOrder_Click">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource PrimaryActionButtonStyle}">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding CanSelect}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Window>
