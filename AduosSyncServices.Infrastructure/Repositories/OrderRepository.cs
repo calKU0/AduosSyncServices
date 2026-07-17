@@ -93,10 +93,12 @@ namespace AduosSyncServices.Infrastructure.Repositories
             return orderDict.Values.ToList();
         }
 
-        public async Task<List<AllegroOrder>> GetAllOrdersForExtranalCompany()
+        public async Task<List<AllegroOrder>> GetAllOrdersForExternalCompany()
         {
             using var conn = _context.CreateConnection();
             conn.Open();
+            // The stored procedure keeps the historical "Extranal" typo - renaming a live SP isn't
+            // worth the deployment coordination; only the C# surface was corrected.
             var storedProcedure = "dbo.AllegroOrders_GetAllOrdersForExtranalCompany";
 
             var orderDict = new Dictionary<int, AllegroOrder>();
@@ -178,6 +180,7 @@ namespace AduosSyncServices.Infrastructure.Repositories
                 orderParams.Add("@ExternalDeliveryName", order.ExternalDeliveryName);
                 orderParams.Add("@Account", order.Account);
                 orderParams.Add("@IntegrationCompany", order.IntegrationCompany);
+                orderParams.Add("@Source", order.Source);
                 orderParams.Add("@Id", dbType: DbType.Int32, direction: ParameterDirection.Output);
 
                 await conn.ExecuteAsync(
@@ -200,7 +203,7 @@ namespace AduosSyncServices.Infrastructure.Repositories
                     );
 
                     if (product == default)
-                        throw new Exception($"Product with Id {item.ProductId} not found.");
+                        throw new Exception($"Product with code '{item.ExternalId}' not found (order {order.AllegroId}, item {item.OrderItemId}).");
 
                     var itemParams = new
                     {

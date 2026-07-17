@@ -23,7 +23,9 @@ namespace AduosSyncServices.ServicesManager.Services
         public required IProductRepository ProductRepository { get; init; }
         public required IAllegroOrderSyncService SyncService { get; init; }
         public required IGaskaOrderPlacementService PlacementService { get; init; }
-        public required string AllegroDeliveryNames { get; init; }
+        public required List<string> AllegroDeliveryNames { get; init; }
+        public required AllegroAccount Account { get; init; }
+        public required IntegrationCompany IntegrationCompany { get; init; }
     }
 
     public class OrdersManagementServiceFactory
@@ -66,7 +68,7 @@ namespace AduosSyncServices.ServicesManager.Services
 
             var syncService = new AllegroOrderSyncService(NullLogger<AllegroOrderSyncService>.Instance, orderRepository, allegroApiClient, gaskaApiClient);
             var placementService = new GaskaOrderPlacementService(orderRepository, productRepository, gaskaApiClient, allegroApiClient, gaskaCredentials.ProductInterval);
-            var allegroDeliveryNames = config["AppSettings:AllegroDeliveryNames"] ?? string.Empty;
+            var allegroDeliveryNames = config.GetSection("AppSettings:AllegroDeliveryNames").Get<List<string>>() ?? new List<string>();
 
             return new OrdersManagementContext
             {
@@ -74,7 +76,9 @@ namespace AduosSyncServices.ServicesManager.Services
                 ProductRepository = productRepository,
                 SyncService = syncService,
                 PlacementService = placementService,
-                AllegroDeliveryNames = allegroDeliveryNames
+                AllegroDeliveryNames = allegroDeliveryNames,
+                Account = repoSettings.Value.Account,
+                IntegrationCompany = repoSettings.Value.Company
             };
         }
 

@@ -1,4 +1,5 @@
 ﻿using AduosSyncServices.Contracts.Models;
+using AduosSyncServices.Contracts.OrderPlacement;
 
 namespace AduosSyncServices.Contracts.Interfaces
 {
@@ -32,6 +33,10 @@ namespace AduosSyncServices.Contracts.Interfaces
 
         Task<int> ArchiveProductsNotInIntegrationIdsAsync(IEnumerable<int> integrationIds, CancellationToken ct);
 
+        Task<int> ArchiveOlderDuplicateProductsAsync(CancellationToken ct);
+
         Task<int> DeleteArchivedProductsWithEndedOffersAsync(CancellationToken ct);
+
+        Task<List<OrderableProduct>> SearchOrderableProductsAsync(string searchTerm, int offset, CancellationToken ct);
     }
 }

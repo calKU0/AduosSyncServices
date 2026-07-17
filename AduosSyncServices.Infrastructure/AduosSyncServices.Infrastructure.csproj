@@ -183,6 +183,18 @@
     <None Update="Migrations\20260716_03_MakeIsDropshippingNullable.sql">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Migrations\20260717_01_AddManualOrdersSupport.sql">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Migrations\20260717_02_ArchiveOlderDuplicateIntegrationIdProducts.sql">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Migrations\20260717_03_RemoveOfferProductIdFixSearchOrderable.sql">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Migrations\20260717_04_ExcludeManualOrdersFromUpdateInAllegro.sql">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Resources\Images\logo.jpg">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

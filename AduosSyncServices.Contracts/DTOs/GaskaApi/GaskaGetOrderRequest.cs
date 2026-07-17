@@ -1,6 +1,6 @@
 ﻿using System.Text.Json.Serialization;
 
-namespace AduosSyncServices.Contracts.DTOs.Allegro.GaskaApi
+namespace AduosSyncServices.Contracts.DTOs.GaskaApi
 {
     public class GaskaGetOrderRequest
     {

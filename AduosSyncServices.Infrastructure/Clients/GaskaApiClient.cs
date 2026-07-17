@@ -1,5 +1,4 @@
 ﻿using AduosSyncServices.Contracts.Clients;
-using AduosSyncServices.Contracts.DTOs.Allegro.GaskaApi;
 using AduosSyncServices.Contracts.DTOs.GaskaApi;
 using Microsoft.AspNetCore.WebUtilities;
 using System.Net.Http.Json;
@@ -31,7 +30,7 @@ namespace AduosSyncServices.Infrastructure.Clients
             }, cancellationToken);
         }
 
-        public async Task<GaskaGetProductsReponse> GetProducts(GaskaGetProductsRequest request, CancellationToken cancellationToken = default)
+        public async Task<GaskaGetProductsResponse> GetProducts(GaskaGetProductsRequest request, CancellationToken cancellationToken = default)
         {
             var query = new Dictionary<string, string?>
             {
@@ -46,12 +45,12 @@ namespace AduosSyncServices.Infrastructure.Clients
                 query["categoryId"] = request.CategoryId.Value.ToString();
             }
 
-            return await GetDataAsync<GaskaGetProductsReponse>("/products", query, cancellationToken);
+            return await GetDataAsync<GaskaGetProductsResponse>("/products", query, cancellationToken);
         }
 
-        public async Task<GaskaGetProductsChangedReponse> GetProductsChanged(DateTime dateFrom, CancellationToken cancellationToken = default)
+        public async Task<GaskaGetProductsChangedResponse> GetProductsChanged(DateTime dateFrom, CancellationToken cancellationToken = default)
         {
-            return await GetDataAsync<GaskaGetProductsChangedReponse>("/productsChanged", new Dictionary<string, string?>
+            return await GetDataAsync<GaskaGetProductsChangedResponse>("/productsChanged", new Dictionary<string, string?>
             {
                 { "dateFrom", dateFrom.ToString("yyyy-MM-dd") }
             }, cancellationToken);
@@ -89,7 +88,7 @@ namespace AduosSyncServices.Infrastructure.Clients
             }
 
             var response = await _httpClient.GetAsync(endpoint, cancellationToken);
-            response.EnsureSuccessStatusCode();
+            await EnsureSuccessWithBodyAsync(response, endpoint, cancellationToken);
 
             return await response.Content.ReadFromJsonAsync<T>(_jsonOptions, cancellationToken)
                 ?? throw new InvalidOperationException("Failed to deserialize response");
@@ -98,10 +97,26 @@ namespace AduosSyncServices.Infrastructure.Clients
         private async Task<T> PostDataAsync<T>(string endpoint, object requestBody, CancellationToken cancellationToken = default)
         {
             var response = await _httpClient.PostAsJsonAsync(endpoint, requestBody, cancellationToken);
-            response.EnsureSuccessStatusCode();
+            await EnsureSuccessWithBodyAsync(response, endpoint, cancellationToken);
 
             return await response.Content.ReadFromJsonAsync<T>(_jsonOptions, cancellationToken)
                 ?? throw new InvalidOperationException("Failed to deserialize response");
+        }
+
+        // response.EnsureSuccessStatusCode() throws without the response body, so a Gąska-side
+        // validation message (e.g. "invalid postal code") never reached the user - only a generic
+        // "status code does not indicate success". Read the body first so callers' ex.Message carries
+        // whatever Gąska actually said.
+        private static async Task EnsureSuccessWithBodyAsync(HttpResponseMessage response, string endpoint, CancellationToken cancellationToken)
+        {
+            if (response.IsSuccessStatusCode)
+                return;
+
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new HttpRequestException(
+                $"Gąska API zwróciło błąd {(int)response.StatusCode} {response.ReasonPhrase} dla {endpoint}: {body}",
+                null,
+                response.StatusCode);
         }
     }
 }

@@ -1,7 +1,6 @@
 using AduosSyncServices.Contracts.Clients;
 using AduosSyncServices.Contracts.Data.Enums;
 using AduosSyncServices.Contracts.DTOs.Allegro;
-using AduosSyncServices.Contracts.DTOs.Allegro.GaskaApi;
 using AduosSyncServices.Contracts.Interfaces;
 using AduosSyncServices.Contracts.Models;
 using Microsoft.Extensions.Logging;
@@ -26,22 +25,24 @@ namespace AduosSyncServices.Infrastructure.Services
             _gaskaApiClient = gaskaApiClient;
         }
 
-        public async Task SyncOrdersFromAllegro(string allegroDeliveryNames, IProgress<string>? progress = null, CancellationToken ct = default)
+        public async Task SyncOrdersFromAllegro(List<string> allegroDeliveryNames, IProgress<string>? progress = null, CancellationToken ct = default)
         {
             const int limit = 100;
             int offset = 0, totalFetched = 0;
-            const string minBoughtFrom = "2026-02-11T00:00:00Z";
+            const string minBoughtFrom = "2026-07-17T00:00:00Z";
             var minBoughtDate = DateTime.Parse(minBoughtFrom, null, DateTimeStyles.AdjustToUniversal);
-            var sevenDaysAgo = DateTime.UtcNow.AddDays(-7);
+            var sevenDaysAgo = DateTime.UtcNow.AddDays(-4);
             var boughtDate = sevenDaysAgo < minBoughtDate ? minBoughtDate : sevenDaysAgo;
             string boughtDateIso = boughtDate.ToString("yyyy-MM-ddTHH:mm:ssZ");
+            var deliveryNamesDisplay = string.Join(", ", allegroDeliveryNames ?? new List<string>());
 
             try
             {
                 progress?.Report("Pobieranie stawek dostawy z Allegro...");
                 var shippingRates = await _allegroApiClient.GetShippingRates(ct);
-                var deliveryNames = (allegroDeliveryNames ?? string.Empty)
-                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                var deliveryNames = (allegroDeliveryNames ?? new List<string>())
+                    .Where(n => !string.IsNullOrWhiteSpace(n))
+                    .Select(n => n.Trim())
                     .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
                 var gaskaShippingRateIds = shippingRates.ShippingRates
@@ -51,8 +52,8 @@ namespace AduosSyncServices.Infrastructure.Services
 
                 if (gaskaShippingRateIds.Count == 0)
                 {
-                    _logger.LogError("Failed to find Allegro Shipping Rate IDs for delivery methods '{DeliveryName}'. Aborting order sync.", allegroDeliveryNames);
-                    progress?.Report($"Nie znaleziono stawek dostawy dla metod '{allegroDeliveryNames}'. Przerwano synchronizację.");
+                    _logger.LogError("Failed to find Allegro Shipping Rate IDs for delivery methods '{DeliveryName}'. Aborting order sync.", deliveryNamesDisplay);
+                    progress?.Report($"Nie znaleziono stawek dostawy dla metod '{deliveryNamesDisplay}'. Przerwano synchronizację.");
                     return;
                 }
 
@@ -105,7 +106,7 @@ namespace AduosSyncServices.Infrastructure.Services
 
                             if (!allItemsUseGaska)
                             {
-                                _logger.LogInformation("Skipping order {OrderId} - not all items use {ShippingRate} shipping method.", order.Id, allegroDeliveryNames);
+                                _logger.LogInformation("Skipping order {OrderId} - not all items use {ShippingRate} shipping method.", order.Id, deliveryNamesDisplay);
                                 continue;
                             }
 
@@ -180,7 +181,11 @@ namespace AduosSyncServices.Infrastructure.Services
 
                 foreach (var item in order.Items)
                 {
-                    var gaskaItem = gaskaOrderResponse.Order.Items.FirstOrDefault(i => i.Id == item.ProductId);
+                    // Match by Gąska product code (item.ExternalId holds our Product.Code, which is
+                    // Gąska's code) - NOT by id: gaskaItem.Id is Gąska's own product id (IntegrationId),
+                    // while item.ProductId is the local Products.Id PK; the two virtually never coincide.
+                    var gaskaItem = gaskaOrderResponse.Order.Items.FirstOrDefault(i =>
+                        string.Equals(i.CodeGaska, item.ExternalId, StringComparison.OrdinalIgnoreCase));
                     if (gaskaItem != null)
                     {
                         item.ExternalTrackingNumber = gaskaItem.RealizeTrackingNumber;

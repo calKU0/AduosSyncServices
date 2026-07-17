@@ -1,4 +1,5 @@
-﻿using AduosSyncServices.Contracts.Data.Enums;
+﻿using AduosSyncServices.Contracts.Data;
+using AduosSyncServices.Contracts.Data.Enums;
 using AduosSyncServices.Contracts.DTOs.Allegro;
 using AduosSyncServices.Contracts.Models;
 using AduosSyncServices.Contracts.Settings;
@@ -26,7 +27,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                 allegroSettings,
                 appSettings,
                 priceSettings,
-                publicationStatus: "ACTIVE",
+                publicationStatus: AllegroOfferStatuses.Active,
                 startingAt: DateTime.UtcNow,
                 stockOverride: null);
         }
@@ -44,7 +45,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
             {
                 return new ProductOfferRequest
                 {
-                    Publication = new Publication { Status = "ENDED" }
+                    Publication = new Publication { Status = AllegroOfferStatuses.Ended }
                 };
             }
 
@@ -57,8 +58,8 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                 allegroSettings,
                 appSettings,
                 priceSettings,
-                publicationStatus: product.InStock >= appSettings.MinProductStock && product.PriceNet >= appSettings.MinProductPriceNet ? "ACTIVE" : "ENDED",
-                startingAt: offer.Status == "INACTIVE" ? DateTime.UtcNow : null,
+                publicationStatus: product.InStock >= appSettings.MinProductStock && product.PriceNet >= appSettings.MinProductPriceNet ? AllegroOfferStatuses.Active : AllegroOfferStatuses.Ended,
+                startingAt: offer.Status == AllegroOfferStatuses.Inactive ? DateTime.UtcNow : null,
                 stockOverride: Convert.ToInt32(Math.Floor(product.InStock)));
         }
 
@@ -98,7 +99,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                 Images = product.AllegroImages.DistinctBy(i => i.Url).Select(i => i.Url).ToList(),
                 Description = BuildDescription(product),
                 External = new External { Id = product.Code },
-                Publication = new Publication { Status = available < 1 ? "ENDED" : publicationStatus, StartingAt = startingAt },
+                Publication = new Publication { Status = available < 1 ? AllegroOfferStatuses.Ended : publicationStatus, StartingAt = startingAt },
                 Category = new() { Id = product.DefaultAllegroCategory.ToString() },
                 Delivery = new Delivery
                 {

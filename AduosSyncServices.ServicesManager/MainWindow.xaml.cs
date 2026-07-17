@@ -41,8 +41,10 @@ namespace AduosSyncServices.ServicesManager
         private List<MarginRange> _marginRanges = new();
         private Controls.DeliveryEditor? _deliveryEditor;
         private Controls.MarginRangeEditor? _marginRangeEditor;
+        private Controls.DeliveryNameListEditor? _allegroDeliveryNamesEditor;
         private bool _deliveriesSectionExists;
         private bool _marginRangesSectionExists;
+        private bool _allegroDeliveryNamesSectionExists;
         private bool _initialSelectionCompleted;
         private readonly List<ServiceItem> _allServices = new();
         public ObservableCollection<string> AvailableAccounts { get; } = new ObservableCollection<string>();

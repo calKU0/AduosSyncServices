@@ -1,6 +1,6 @@
 ﻿namespace AduosSyncServices.Contracts.DTOs.GaskaApi
 {
-    public class GaskaGetProductsChangedReponse
+    public class GaskaGetProductsChangedResponse
     {
         public List<ProductChanged> Products { get; set; }
     }

@@ -1,7 +1,7 @@
 using AduosSyncServices.Contracts.Clients;
 using AduosSyncServices.Contracts.Data.Enums;
 using AduosSyncServices.Contracts.DTOs.Allegro;
-using AduosSyncServices.Contracts.DTOs.Allegro.GaskaApi;
+using AduosSyncServices.Contracts.DTOs.GaskaApi;
 using AduosSyncServices.Contracts.Extensions;
 using AduosSyncServices.Contracts.Interfaces;
 using AduosSyncServices.Contracts.Models;
@@ -52,6 +52,7 @@ namespace AduosSyncServices.Infrastructure.Services
             }
 
             var shortages = new List<StockShortage>();
+            var remaining = requestedByIntegrationId.Count;
 
             foreach (var (integrationId, (requestedQty, product)) in requestedByIntegrationId)
             {
@@ -63,36 +64,34 @@ namespace AduosSyncServices.Infrastructure.Services
                     RequestedQty = requestedQty
                 });
 
-                try
+                var response = await _gaskaApiClient.GetProduct(integrationId, "pl", ct);
+                var availableQty = response?.Product?.InStock ?? 0f;
+                var isAvailable = availableQty >= requestedQty;
+
+                if (!isAvailable)
                 {
-                    var response = await _gaskaApiClient.GetProduct(integrationId, "pl", ct);
-                    var availableQty = response?.Product?.InStock ?? 0f;
-                    var isAvailable = availableQty >= requestedQty;
-
-                    if (!isAvailable)
-                    {
-                        shortages.Add(new StockShortage
-                        {
-                            ProductCode = product.Code,
-                            ProductName = product.Name,
-                            RequestedQty = requestedQty,
-                            AvailableQty = availableQty
-                        });
-                    }
-
-                    itemProgress?.Report(new StockCheckProgressItem
+                    shortages.Add(new StockShortage
                     {
                         ProductCode = product.Code,
                         ProductName = product.Name,
-                        Status = isAvailable ? StockCheckItemStatus.Available : StockCheckItemStatus.Insufficient,
                         RequestedQty = requestedQty,
                         AvailableQty = availableQty
                     });
                 }
-                finally
+
+                itemProgress?.Report(new StockCheckProgressItem
                 {
+                    ProductCode = product.Code,
+                    ProductName = product.Name,
+                    Status = isAvailable ? StockCheckItemStatus.Available : StockCheckItemStatus.Insufficient,
+                    RequestedQty = requestedQty,
+                    AvailableQty = availableQty
+                });
+
+                // Rate-limit pause between product lookups, but not after the last one - there's
+                // nothing left to throttle and it would just delay the result for the caller.
+                if (--remaining > 0)
                     await Task.Delay(TimeSpan.FromSeconds(_productIntervalSeconds), ct);
-                }
             }
 
             return new StockCheckResult { IsSuccessful = shortages.Count == 0, Shortages = shortages };
@@ -101,6 +100,7 @@ namespace AduosSyncServices.Infrastructure.Services
         public async Task<HeadquartersOrderPlacementResult> PlaceHeadquartersOrderAsync(
             IReadOnlyCollection<AllegroOrder> orders,
             GaskaDeliveryCourier courier,
+            bool skipStockCheck = false,
             IProgress<string>? statusProgress = null,
             CancellationToken ct = default)
         {
@@ -114,10 +114,13 @@ namespace AduosSyncServices.Infrastructure.Services
             if (!courier.IsAvailableForHeadquarters())
                 return Failure("Wybrana metoda dostawy jest dostępna wyłącznie przy wysyłce bezpośrednio do klientów.");
 
-            statusProgress?.Report("Sprawdzanie dostępności produktów...");
-            var stockCheck = await CheckStockAsync(orders, null, ct);
-            if (!stockCheck.IsSuccessful)
-                return Failure(BuildShortageMessage(stockCheck.Shortages));
+            if (!skipStockCheck)
+            {
+                statusProgress?.Report("Sprawdzanie dostępności produktów...");
+                var stockCheck = await CheckStockAsync(orders, null, ct);
+                if (!stockCheck.IsSuccessful)
+                    return Failure(BuildShortageMessage(stockCheck.Shortages));
+            }
 
             statusProgress?.Report("Pobieranie domyślnego adresu dostawy...");
             var addresses = await _gaskaApiClient.GetDeliveryAddresses(ct);
@@ -219,6 +222,7 @@ namespace AduosSyncServices.Infrastructure.Services
             IReadOnlyCollection<AllegroOrder> orders,
             GaskaDeliveryCourier courier,
             IReadOnlyDictionary<int, decimal> codAmountsByAllegroOrderId,
+            bool skipStockCheck = false,
             IProgress<string>? statusProgress = null,
             CancellationToken ct = default)
         {
@@ -255,14 +259,17 @@ namespace AduosSyncServices.Infrastructure.Services
                 }
             }
 
-            statusProgress?.Report("Sprawdzanie dostępności produktów...");
-            var stockCheck = await CheckStockAsync(orders, null, ct);
-            if (!stockCheck.IsSuccessful)
+            if (!skipStockCheck)
             {
-                var message = BuildShortageMessage(stockCheck.Shortages);
-                foreach (var order in orders)
-                    result.Results.Add(new CustomerOrderPlacementResult { AllegroOrderId = order.Id, IsSuccessful = false, ErrorMessage = message });
-                return result;
+                statusProgress?.Report("Sprawdzanie dostępności produktów...");
+                var stockCheck = await CheckStockAsync(orders, null, ct);
+                if (!stockCheck.IsSuccessful)
+                {
+                    var message = BuildShortageMessage(stockCheck.Shortages);
+                    foreach (var order in orders)
+                        result.Results.Add(new CustomerOrderPlacementResult { AllegroOrderId = order.Id, IsSuccessful = false, ErrorMessage = message });
+                    return result;
+                }
             }
 
             var productIds = orders.SelectMany(o => o.Items).Select(i => i.ProductId).Distinct().ToList();
@@ -285,7 +292,7 @@ namespace AduosSyncServices.Infrastructure.Services
                         PostalCode = order.RecipientPostalCode,
                         Country = order.RecipientCountry,
                         Phone = order.RecipientPhoneNumber,
-                        Email = "kontakt@agro-aduos.pl",
+                        Email = ResolveDeliveryEmail(order.RecipientEmail),
                         OneUse = true
                     };
 
@@ -426,6 +433,12 @@ namespace AduosSyncServices.Infrastructure.Services
 
         private async Task<string?> UpdateAllegroOrderStatusToProcessingAsync(AllegroOrder order, CancellationToken ct)
         {
+            // Manual orders (AllegroId = "MANUAL-{guid}") have no corresponding Allegro order/offer -
+            // there's nothing to update on Allegro's side, and calling the API with a synthetic id
+            // would just fail and surface a confusing warning after an otherwise-successful placement.
+            if (order.Source == OrderSource.Manual)
+                return null;
+
             try
             {
                 var statusRequest = new AllegroSetOrderStatusRequest { Status = AllegroOrderStatus.PROCESSING };
@@ -475,7 +488,12 @@ namespace AduosSyncServices.Infrastructure.Services
 
             foreach (var item in order.Items)
             {
-                var gaskaItem = details.Items.FirstOrDefault(i => i.Id == item.ProductId);
+                // Match by Gąska product code (item.ExternalId holds our Product.Code, which is Gąska's
+                // code) - NOT by id: gaskaItem.Id is Gąska's own product id (our IntegrationId), while
+                // item.ProductId is the local Products.Id PK; the two virtually never coincide, so an
+                // id comparison would leave tracking numbers unmatched for every item.
+                var gaskaItem = details.Items.FirstOrDefault(i =>
+                    string.Equals(i.CodeGaska, item.ExternalId, StringComparison.OrdinalIgnoreCase));
                 if (gaskaItem != null)
                 {
                     item.ExternalTrackingNumber = gaskaItem.RealizeTrackingNumber;
@@ -487,5 +505,16 @@ namespace AduosSyncServices.Infrastructure.Services
         private static string BuildShortageMessage(List<StockShortage> shortages) =>
             "Niewystarczający stan magazynowy w Gąsce: " +
             string.Join("; ", shortages.Select(s => $"{s.ProductName} ({s.ProductCode}): potrzeba {s.RequestedQty}, dostępne {s.AvailableQty}"));
+
+        // Allegro anonymizes buyer emails behind this relay domain, which doesn't accept real
+        // correspondence from the courier - fall back to our own contact address in that case,
+        // same as when there's no email on the order at all.
+        private const string DefaultDeliveryEmail = "kontakt@agro-aduos.pl";
+        private const string AllegroRelayEmailDomain = "@user.allegrogroup.pl";
+
+        private static string ResolveDeliveryEmail(string? recipientEmail) =>
+            string.IsNullOrWhiteSpace(recipientEmail) || recipientEmail.EndsWith(AllegroRelayEmailDomain, StringComparison.OrdinalIgnoreCase)
+                ? DefaultDeliveryEmail
+                : recipientEmail;
     }
 }

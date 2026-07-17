@@ -7,6 +7,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Input;
 using System.Windows.Threading;
 
 namespace AduosSyncServices.ServicesManager
@@ -28,6 +29,7 @@ namespace AduosSyncServices.ServicesManager
         private HashSet<AllegroOrderStatus> _realizeStatusFilter = new();
         private HashSet<bool> _sentToExternalFilter = new();
         private HashSet<AllegroPaymentType> _paymentTypeFilter = new();
+        private HashSet<OrderSource> _sourceFilter = new();
 
         private async Task ShowOrdersViewAsync()
         {
@@ -63,6 +65,7 @@ namespace AduosSyncServices.ServicesManager
             CbRealizeStatusFilter.SetItems(Enum.GetValues<AllegroOrderStatus>().Select(s => (s.GetDescription(), (object)s)));
             CbSentToExternalFilter.SetItems(new (string, object)[] { ("Tak", true), ("Nie", false) });
             CbPaymentTypeFilter.SetItems(Enum.GetValues<AllegroPaymentType>().Select(s => (s.GetDescription(), (object)s)));
+            CbSourceFilter.SetItems(Enum.GetValues<OrderSource>().Select(s => (s.GetDescription(), (object)s)));
         }
 
         private void EnsureAutoRefreshTimerStarted()
@@ -98,7 +101,7 @@ namespace AduosSyncServices.ServicesManager
 
                 var context = GetOrdersContext();
                 var previousSelection = _orders.Where(o => o.IsSelected).Select(o => o.Id).ToHashSet();
-                var orders = await context.OrderRepository.GetAllOrdersForExtranalCompany();
+                var orders = await context.OrderRepository.GetAllOrdersForExternalCompany();
 
                 foreach (var row in _orders)
                     row.PropertyChanged -= OrderRow_PropertyChanged;
@@ -193,6 +196,9 @@ namespace AduosSyncServices.ServicesManager
             if (_paymentTypeFilter.Count > 0 && !_paymentTypeFilter.Contains(row.PaymentType))
                 return false;
 
+            if (_sourceFilter.Count > 0 && !_sourceFilter.Contains(row.Source))
+                return false;
+
             return true;
         }
 
@@ -202,6 +208,7 @@ namespace AduosSyncServices.ServicesManager
             _realizeStatusFilter = CbRealizeStatusFilter.SelectedValues.Cast<AllegroOrderStatus>().ToHashSet();
             _sentToExternalFilter = CbSentToExternalFilter.SelectedValues.Cast<bool>().ToHashSet();
             _paymentTypeFilter = CbPaymentTypeFilter.SelectedValues.Cast<AllegroPaymentType>().ToHashSet();
+            _sourceFilter = CbSourceFilter.SelectedValues.Cast<OrderSource>().ToHashSet();
             _ordersView?.Refresh();
         }
 
@@ -232,6 +239,69 @@ namespace AduosSyncServices.ServicesManager
         private async void BtnRefreshOrders_Click(object sender, RoutedEventArgs e)
         {
             await RefreshOrdersAsync();
+        }
+
+        private void BtnAddOrder_Click(object sender, RoutedEventArgs e)
+        {
+            var context = GetOrdersContext();
+            var dialog = new AddManualOrderDialog(context.OrderRepository, context.ProductRepository, context.PlacementService, context.Account, context.IntegrationCompany) { Owner = this };
+            var result = dialog.ShowDialog();
+
+            if (result == true)
+                _ = RefreshOrdersAsync();
+        }
+
+        private void LvOrders_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            // Two fast clicks on the selection checkbox shouldn't ALSO open the details dialog on top
+            // of toggling it - ignore double-clicks that originate inside a CheckBox.
+            if (e.OriginalSource is DependencyObject source && HasCheckBoxAncestor(source))
+                return;
+
+            if (LvOrders.SelectedItem is OrderRowViewModel row)
+                OpenOrderDetails(row);
+        }
+
+        private static bool HasCheckBoxAncestor(DependencyObject element)
+        {
+            while (element != null)
+            {
+                if (element is CheckBox)
+                    return true;
+
+                if (element is System.Windows.Controls.Primitives.DataGridRowsPresenter or DataGrid)
+                    return false;
+
+                element = element is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D
+                    ? System.Windows.Media.VisualTreeHelper.GetParent(element)
+                    : LogicalTreeHelper.GetParent(element);
+            }
+
+            return false;
+        }
+
+        private void LvOrders_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.Enter || LvOrders.SelectedItem is not OrderRowViewModel row)
+                return;
+
+            OpenOrderDetails(row);
+            e.Handled = true;
+        }
+
+        private void OpenOrderDetails(OrderRowViewModel row)
+        {
+            var context = GetOrdersContext();
+            var dialog = new OrderDetailsDialog(row, context.PlacementService, context.ProductRepository) { Owner = this };
+            var result = dialog.ShowDialog();
+
+            if (result == true)
+            {
+                foreach (var order in _orders)
+                    order.IsSelected = false;
+
+                _ = RefreshOrdersAsync();
+            }
         }
 
         private void BtnPlaceOrder_Click(object sender, RoutedEventArgs e)

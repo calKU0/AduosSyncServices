@@ -3,6 +3,7 @@ using AduosSyncServices.Contracts.Extensions;
 using AduosSyncServices.Contracts.Interfaces;
 using AduosSyncServices.Contracts.Models;
 using AduosSyncServices.Contracts.OrderPlacement;
+using AduosSyncServices.ServicesManager.Helpers;
 using AduosSyncServices.ServicesManager.Models;
 using AduosSyncServices.ServicesManager.Services;
 using System.Collections.ObjectModel;
@@ -20,7 +21,7 @@ namespace AduosSyncServices.ServicesManager
             public string AllegroId { get; set; } = string.Empty;
             public decimal Amount { get; set; }
         }
-        private record LineItemRow(string AllegroId, string Code, string OfferName, int Quantity);
+        private record LineItemRow(string AllegroId, string Code, string OfferName, int Quantity, string Unit);
 
         private readonly IGaskaOrderPlacementService _placementService;
         private readonly IProductRepository _productRepository;
@@ -55,13 +56,19 @@ namespace AduosSyncServices.ServicesManager
             RbHeadquarters.IsChecked = true;
         }
 
-        private List<LineItemRow> BuildLineItems(Dictionary<int, string>? codeByProductId) =>
+        private List<LineItemRow> BuildLineItems(Dictionary<int, Product>? productsById) =>
             _orders
-                .SelectMany(o => o.Items.Select(i => new LineItemRow(
-                    o.AllegroId,
-                    codeByProductId != null && codeByProductId.TryGetValue(i.ProductId, out var code) ? code : "-",
-                    i.OfferName,
-                    i.Quantity)))
+                .SelectMany(o => o.Items.Select(i =>
+                {
+                    Product? product = null;
+                    productsById?.TryGetValue(i.ProductId, out product);
+                    return new LineItemRow(
+                        o.AllegroId,
+                        product?.Code ?? "-",
+                        i.OfferName,
+                        i.Quantity,
+                        product?.Unit ?? "-");
+                }))
                 .ToList();
 
         private async void Window_Loaded(object sender, RoutedEventArgs e)
@@ -71,20 +78,20 @@ namespace AduosSyncServices.ServicesManager
             // columns size themselves once against whatever content they're first given and don't
             // re-measure on a later ItemsSource swap, so an initial narrow placeholder ("...") would
             // permanently lock the Kod column too narrow for the real codes once they loaded.
-            Dictionary<int, string>? codeByProductId = null;
+            Dictionary<int, Product>? productsById = null;
             try
             {
                 var productIds = _orders.SelectMany(o => o.Items).Select(i => i.ProductId).Distinct().ToList();
                 var products = await _productRepository.GetProductsByIdsAsync(productIds, CancellationToken.None);
-                codeByProductId = products.ToDictionary(p => p.Id, p => p.Code);
+                productsById = products.ToDictionary(p => p.Id);
             }
             catch
             {
-                // Best-effort: fall through with codeByProductId == null, showing "-" for Code - it
+                // Best-effort: fall through with productsById == null, showing "-" for Code/Jm - it
                 // isn't required for placing the order itself.
             }
 
-            DgLineItems.ItemsSource = BuildLineItems(codeByProductId);
+            DgLineItems.ItemsSource = BuildLineItems(productsById);
         }
 
         private void Target_Checked(object sender, RoutedEventArgs e)
@@ -136,25 +143,9 @@ namespace AduosSyncServices.ServicesManager
         {
             var itemCount = _orders.Sum(o => o.Items.Count);
             var courierText = _selectedCourier.HasValue ? _selectedCourier.Value.ToPolishDisplayName() : "(nie wybrano)";
-            var orderWord = PolishCount(_orders.Count, "zamówienie", "zamówienia", "zamówień");
-            var itemWord = PolishCount(itemCount, "pozycję", "pozycje", "pozycji");
+            var orderWord = PolishText.Count(_orders.Count, "zamówienie", "zamówienia", "zamówień");
+            var itemWord = PolishText.Count(itemCount, "pozycję", "pozycje", "pozycji");
             SummaryText.Text = $"Wybrano {_orders.Count} {orderWord}, {itemCount} {itemWord}. Metoda dostawy: {courierText}.";
-        }
-
-        // Standard Polish numeral-noun agreement: 1 uses the singular form; 2-4 (except 12-14) use the
-        // "few" plural form; everything else (0, 5+, 12-14) uses the genitive "many" plural form.
-        private static string PolishCount(int count, string singular, string few, string many)
-        {
-            if (count == 1)
-                return singular;
-
-            var lastDigit = count % 10;
-            var lastTwoDigits = count % 100;
-
-            if (lastDigit is >= 2 and <= 4 && (lastTwoDigits < 12 || lastTwoDigits > 14))
-                return few;
-
-            return many;
         }
 
         private void SetBusy(bool isBusy)
@@ -191,8 +182,8 @@ namespace AduosSyncServices.ServicesManager
             }
 
             var confirmMessage = isHeadquarters
-                ? $"Złożyć jedno zamówienie u dostawcy na adres siedziby dla {_orders.Count} {PolishCount(_orders.Count, "zamówienia", "zamówień", "zamówień")}, kurier: {courier.ToPolishDisplayName()}?"
-                : $"Złożyć {_orders.Count} {PolishCount(_orders.Count, "osobne zamówienie", "osobne zamówienia", "osobnych zamówień")} u dostawcy na adresy klientów, kurier: {courier.ToPolishDisplayName()}?";
+                ? $"Złożyć jedno zamówienie u dostawcy na adres siedziby dla {_orders.Count} {PolishText.Count(_orders.Count, "zamówienia", "zamówień", "zamówień")}, kurier: {courier.ToPolishDisplayName()}?"
+                : $"Złożyć {_orders.Count} {PolishText.Count(_orders.Count, "osobne zamówienie", "osobne zamówienia", "osobnych zamówień")} u dostawcy na adresy klientów, kurier: {courier.ToPolishDisplayName()}?";
 
             if (!_dialogService.Confirm(confirmMessage))
                 return;
@@ -204,28 +195,7 @@ namespace AduosSyncServices.ServicesManager
 
             try
             {
-                var itemProgress = new Progress<StockCheckProgressItem>(item =>
-                {
-                    var existing = _stockCheckItems.FirstOrDefault(x => x.ProductCode == item.ProductCode);
-                    if (existing == null)
-                    {
-                        _stockCheckItems.Add(new StockCheckItemViewModel
-                        {
-                            ProductCode = item.ProductCode,
-                            ProductName = item.ProductName,
-                            Status = item.Status,
-                            RequestedQty = item.RequestedQty,
-                            AvailableQty = item.AvailableQty
-                        });
-                    }
-                    else
-                    {
-                        existing.Status = item.Status;
-                        existing.RequestedQty = item.RequestedQty;
-                        existing.AvailableQty = item.AvailableQty;
-                    }
-                });
-
+                var itemProgress = StockCheckItemViewModel.CreateCollectionProgress(_stockCheckItems);
                 var stockCheck = await _placementService.CheckStockAsync(_orders, itemProgress);
                 if (!stockCheck.IsSuccessful)
                 {
@@ -240,7 +210,10 @@ namespace AduosSyncServices.ServicesManager
 
                 if (isHeadquarters)
                 {
-                    var result = await _placementService.PlaceHeadquartersOrderAsync(_orders, courier, statusProgress);
+                    // skipStockCheck: the CheckStockAsync above already validated every product (and
+                    // drove the visible checklist) - re-checking inside the service would repeat all
+                    // the rate-limited Gąska product calls.
+                    var result = await _placementService.PlaceHeadquartersOrderAsync(_orders, courier, skipStockCheck: true, statusProgress);
 
                     if (result.IsSuccessful)
                     {
@@ -268,7 +241,7 @@ namespace AduosSyncServices.ServicesManager
                 else
                 {
                     var codAmounts = _codRows.ToDictionary(r => r.AllegroOrderId, r => r.Amount);
-                    var result = await _placementService.PlaceCustomerOrdersAsync(_orders, courier, codAmounts, statusProgress);
+                    var result = await _placementService.PlaceCustomerOrdersAsync(_orders, courier, codAmounts, skipStockCheck: true, statusProgress);
 
                     var succeeded = result.Results.Where(r => r.IsSuccessful).ToList();
                     var failed = result.Results.Where(r => !r.IsSuccessful).ToList();
@@ -276,7 +249,7 @@ namespace AduosSyncServices.ServicesManager
                     if (failed.Count == 0)
                     {
                         var orderNumbers = succeeded.Where(r => !string.IsNullOrEmpty(r.GaskaOrderNumber)).Select(r => r.GaskaOrderNumber).ToList();
-                        var succeededWord = PolishCount(succeeded.Count, "zamówienie", "zamówienia", "zamówień");
+                        var succeededWord = PolishText.Count(succeeded.Count, "zamówienie", "zamówienia", "zamówień");
                         var message = orderNumbers.Count > 0
                             ? $"Złożono {succeeded.Count} {succeededWord} w Gąsce (nr: {string.Join(", ", orderNumbers)})."
                             : $"Złożono {succeeded.Count} {succeededWord} w Gąsce.";
@@ -302,7 +275,7 @@ namespace AduosSyncServices.ServicesManager
                             return $"Zamówienie {allegroId}: {f.ErrorMessage}";
                         }));
 
-                        var totalWord = PolishCount(result.Results.Count, "zamówienia", "zamówień", "zamówień");
+                        var totalWord = PolishText.Count(result.Results.Count, "zamówienia", "zamówień", "zamówień");
                         _dialogService.ShowWarning($"Złożono {succeeded.Count}/{result.Results.Count} {totalWord}. Błędy:\n{details}", "Częściowy sukces");
                         DialogResult = succeeded.Count > 0;
                     }

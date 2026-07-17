@@ -14,6 +14,11 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
 {
     public class GaskaApiService : IGaskaApiService
     {
+        // Shared client for image downloads: creating a new HttpClient per product/batch leaks sockets
+        // (each instance holds its connections in TIME_WAIT after disposal) and a long-running worker
+        // syncing thousands of products can exhaust the ephemeral port range.
+        private static readonly HttpClient ImageHttpClient = new();
+
         private readonly ILogger<GaskaApiService> _logger;
         private readonly IProductRepository _productRepo;
         private readonly IImageRepository _imageRepo;
@@ -74,6 +79,13 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
 
             var archivedCount = await _productRepo.ArchiveProductsNotInIntegrationIdsAsync(syncedIntegrationIds, ct);
             _logger.LogInformation("Archived {ArchivedCount} products not found in API sync.", archivedCount);
+
+            // A product whose code changed in Gąska gets re-inserted under the new code (upsert matches
+            // on Code), leaving a stale old-code row with the SAME IntegrationId - which the missing-id
+            // archiving above can never catch. Archive the older duplicate(s), keep the newest row.
+            var duplicateArchivedCount = await _productRepo.ArchiveOlderDuplicateProductsAsync(ct);
+            if (duplicateArchivedCount > 0)
+                _logger.LogInformation("Archived {Count} older duplicate products (same IntegrationId, different code).", duplicateArchivedCount);
 
             var deletedCount = await _productRepo.DeleteArchivedProductsWithEndedOffersAsync(ct);
             if (deletedCount > 0)
@@ -160,6 +172,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
                     if (remainingSlots > 0)
                     {
                         var productsChanged = await GetProductsChanged(DateTime.Now.AddDays(-1), ct);
+                        _logger.LogInformation("Found {Count} products changed", productsChanged?.Count ?? 0);
                         if (productsChanged != null && productsChanged.Any())
                         {
                             productsToUpdate.AddRange(productsChanged.Take(remainingSlots));
@@ -253,7 +266,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
             if (!urls.Any())
                 return;
 
-            var savedPaths = await ImageHelper.SaveImagesAsync(new HttpClient(), urls, productId, ServiceConstants.ImagesFolder, ct);
+            var savedPaths = await ImageHelper.SaveImagesAsync(ImageHttpClient, urls, productId, ServiceConstants.ImagesFolder, ct);
             await _imageRepo.DeleteProductImagesAsync(productId, ct);
             if (savedPaths == null || !savedPaths.Any())
                 _logger.LogWarning("Failed to save images for product {Code}", product.CodeGaska);

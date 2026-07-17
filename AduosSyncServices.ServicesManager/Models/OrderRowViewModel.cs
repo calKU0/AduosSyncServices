@@ -35,15 +35,15 @@ namespace AduosSyncServices.ServicesManager.Models
             && Order.RealizeStatus == AllegroOrderStatus.NEW
             && Order.Status == AllegroCheckoutFormStatus.READY_FOR_PROCESSING;
 
-        public string CannotSelectReason
+        public string CannotPlaceReason
         {
             get
             {
                 if (Order.SentToExternalCompany)
-                    return "Zamówienie zostało już złożone u dostawcy - nie można go zaznaczyć ponownie.";
+                    return "Nie można złożyć zamówienia - zostało ono już złożone u dostawcy.";
 
                 if (Order.RealizeStatus != AllegroOrderStatus.NEW || Order.Status != AllegroCheckoutFormStatus.READY_FOR_PROCESSING)
-                    return "Zamówienie można zaznaczyć tylko gdy status realizacji to \"Nowe\", a status to \"Gotowe do realizacji\".";
+                    return "Nie można złożyć zamówienia - status realizacji musi być \"Nowe\", a status \"Gotowe do realizacji\".";
 
                 return string.Empty;
             }
@@ -69,6 +69,8 @@ namespace AduosSyncServices.ServicesManager.Models
         public DateTime CreatedAt => Order.CreatedAt;
         public decimal Amount => Order.Amount;
         public string AmountDisplay => Order.Amount.ToString("N2", CultureInfo.GetCultureInfo("pl-PL")) + " zł";
+        public OrderSource Source => Order.Source;
+        public string SourceDisplay => Order.Source.GetDescription();
 
         public string TrackingNumbers
         {

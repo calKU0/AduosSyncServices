@@ -1,5 +1,6 @@
 using AduosSyncServices.Contracts.Interfaces;
 using AduosSyncServices.Contracts.Models;
+using AduosSyncServices.Contracts.OrderPlacement;
 using AduosSyncServices.Infrastructure.Data;
 using AduosSyncServices.Infrastructure.Settings;
 using Dapper;
@@ -769,6 +770,37 @@ namespace AduosSyncServices.Infrastructure.Repositories
             }
 
             return totalDeleted;
+        }
+
+        public async Task<int> ArchiveOlderDuplicateProductsAsync(CancellationToken ct)
+        {
+            using var connection = _context.CreateConnection();
+            var command = new CommandDefinition(
+                "Products_ArchiveOlderDuplicates",
+                new { IntegrationCompany = _company },
+                commandType: CommandType.StoredProcedure,
+                commandTimeout: 900,
+                cancellationToken: ct);
+
+            return await connection.ExecuteScalarAsync<int>(command);
+        }
+
+        public async Task<List<OrderableProduct>> SearchOrderableProductsAsync(string searchTerm, int offset, CancellationToken ct)
+        {
+            using var connection = _context.CreateConnection();
+            var command = new CommandDefinition(
+                "Products_SearchOrderable",
+                new
+                {
+                    SearchTerm = searchTerm,
+                    IntegrationCompany = _company,
+                    Account = _account,
+                    Offset = offset
+                },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: ct);
+
+            return (await connection.QueryAsync<OrderableProduct>(command)).ToList();
         }
     }
 }

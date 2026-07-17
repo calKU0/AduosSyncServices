@@ -26,9 +26,9 @@ namespace AduosSyncServices.Infrastructure.Clients
             };
         }
 
-        public async Task<AllegroShippingRatesReponse> GetShippingRates(CancellationToken ct = default)
+        public async Task<AllegroShippingRatesResponse> GetShippingRates(CancellationToken ct = default)
         {
-            return await GetAsync<AllegroShippingRatesReponse>("/sale/shipping-rates", ct);
+            return await GetAsync<AllegroShippingRatesResponse>("/sale/shipping-rates", ct);
         }
 
         public async Task<OffersResponse> GetOffers(int limit, int offset, CancellationToken ct = default)

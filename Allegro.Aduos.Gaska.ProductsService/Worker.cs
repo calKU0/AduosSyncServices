@@ -78,18 +78,18 @@ public class Worker : BackgroundService
                 _logger.LogInformation($"{stepName} completed in {FormatDuration(sw.Elapsed)}.");
             }
 
-            //if (DateTime.Now.Hour >= 2 && DateTime.Now.Hour <= 23)
-            //{
+            if (DateTime.Now.Hour >= 2 && DateTime.Now.Hour <= 23)
+            {
                 await MeasureStepAsync("Basic product sync", () => gaskaApiService.SyncProducts());
-            //}
+            }
             await MeasureStepAsync("Allegro offers sync", () => offerService.SyncAllegroOffers());
             await MeasureStepAsync("Allegro offers details sync", () => offerService.SyncAllegroOffersDetails());
 
-            //if (_lastProductDetailsSyncDate.Date < DateTime.Today && DateTime.Now.Hour >= 2 && DateTime.Now.Hour <= 10)
-            //{
+            if (_lastProductDetailsSyncDate.Date < DateTime.Today && DateTime.Now.Hour >= 2 && DateTime.Now.Hour <= 10)
+            {
                 await MeasureStepAsync("Detailed product sync", () => gaskaApiService.SyncProductDetails());
                 _lastProductDetailsSyncDate = DateTime.Today;
-            //}
+            }
 
             await MeasureStepAsync("Allegro categories update", () => categoryService.UpdateAllegroCategories());
             await MeasureStepAsync("Category parameters fetch", () => categoryService.FetchAndSaveCategoryParameters());

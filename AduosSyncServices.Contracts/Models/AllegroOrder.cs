@@ -36,6 +36,7 @@ namespace AduosSyncServices.Contracts.Models
         public AllegroAccount Account { get; set; }
         public IntegrationCompany IntegrationCompany { get; set; }
         public bool? IsDropshipping { get; set; }
+        public OrderSource Source { get; set; }
         public List<AllegroOrderItem> Items { get; set; } = new();
     }
 }

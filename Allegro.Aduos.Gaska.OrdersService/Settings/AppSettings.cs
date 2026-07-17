@@ -4,6 +4,6 @@
     {
         public int LogsExpirationDays { get; set; }
         public int FetchIntervalMinutes { get; set; }
-        public string AllegroDeliveryNames { get; set; } = string.Empty;
+        public List<string> AllegroDeliveryNames { get; set; } = new();
     }
 }

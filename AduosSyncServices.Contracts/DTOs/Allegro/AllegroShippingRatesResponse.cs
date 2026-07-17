@@ -2,7 +2,7 @@
 
 namespace AduosSyncServices.Contracts.DTOs.Allegro
 {
-    public class AllegroShippingRatesReponse
+    public class AllegroShippingRatesResponse
     {
         [JsonPropertyName("shippingRates")]
         public List<ShippingRate> ShippingRates { get; set; }

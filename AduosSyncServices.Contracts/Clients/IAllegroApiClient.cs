@@ -4,7 +4,7 @@ namespace AduosSyncServices.Contracts.Clients
 {
     public interface IAllegroApiClient
     {
-        Task<AllegroShippingRatesReponse> GetShippingRates(CancellationToken ct = default);
+        Task<AllegroShippingRatesResponse> GetShippingRates(CancellationToken ct = default);
         Task<OffersResponse> GetOffers(int limit, int offset, CancellationToken ct = default);
         Task<AllegroOfferDetails.Root> GetOfferDetails(string offerId, CancellationToken ct = default);
         Task<HttpResponseMessage> CreateOffer(object offer, CancellationToken ct = default);

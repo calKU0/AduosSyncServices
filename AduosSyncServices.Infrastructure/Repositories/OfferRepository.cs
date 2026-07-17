@@ -34,8 +34,6 @@ namespace AduosSyncServices.Infrastructure.Repositories
             table.Columns.Add("Id", typeof(string));
             table.Columns.Add("Account", typeof(int));
             table.Columns.Add("Name", typeof(string));
-            var colProductId = new DataColumn("ProductId", typeof(int)) { AllowDBNull = true };
-            table.Columns.Add(colProductId);
             table.Columns.Add("CategoryId", typeof(int));
             table.Columns.Add("Price", typeof(decimal));
             table.Columns.Add("Stock", typeof(int));
@@ -57,7 +55,6 @@ namespace AduosSyncServices.Infrastructure.Repositories
                     o.Id,
                     _account,
                     o.Name ?? string.Empty,
-                    DBNull.Value,
                     categoryId,
                     price,
                     o.Stock?.Available ?? 0,

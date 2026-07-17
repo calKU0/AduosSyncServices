@@ -10,7 +10,7 @@ namespace AduosSyncServices.Contracts.Interfaces
 
         public Task<List<AllegroOrder>> GetOrdersToUpdateExternalInfo();
 
-        public Task<List<AllegroOrder>> GetAllOrdersForExtranalCompany();
+        public Task<List<AllegroOrder>> GetAllOrdersForExternalCompany();
 
         public Task UpdateOrderExternalInfo(AllegroOrder order);
 
