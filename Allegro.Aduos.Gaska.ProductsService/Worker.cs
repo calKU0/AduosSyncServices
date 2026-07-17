@@ -75,7 +75,7 @@ public class Worker : BackgroundService
                 await action();
                 sw.Stop();
                 stepTimes[stepName] = sw.Elapsed;
-                _logger.LogInformation($"{stepName} completed in {FormatDuration(sw.Elapsed)}.");
+                _logger.LogInformation("{StepName} completed in {Duration}.", stepName, FormatDuration(sw.Elapsed));
             }
 
             if (DateTime.Now.Hour >= 2 && DateTime.Now.Hour <= 23)
@@ -104,10 +104,10 @@ public class Worker : BackgroundService
 
             foreach (var kv in stepTimes)
             {
-                _logger.LogInformation($" - {kv.Key}: {FormatDuration(kv.Value)}");
+                _logger.LogInformation(" - {StepName}: {Duration}", kv.Key, FormatDuration(kv.Value));
             }
 
-            _logger.LogInformation($"=== Total time: {FormatDuration(totalStopwatch.Elapsed)} ===");
+            _logger.LogInformation("=== Total time: {Duration} ===", FormatDuration(totalStopwatch.Elapsed));
         }
         catch (Exception ex)
         {

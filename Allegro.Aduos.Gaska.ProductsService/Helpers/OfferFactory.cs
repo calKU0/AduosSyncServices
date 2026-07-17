@@ -333,13 +333,18 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
 
         private static Description BuildDescription(Product product)
         {
-            var logoUrl = product.AllegroImages.Last().Url;
+            var allImageUrls = product.AllegroImages.DistinctBy(i => i.Url).Select(i => i.Url).ToList();
+            var logoUrl = allImageUrls.LastOrDefault();
             var description = new Description { Sections = new List<Section>() };
-            var images = product.AllegroImages
-                .DistinctBy(i => i.Url)
-                .Select(i => i.Url)
-                .Where(url => url != logoUrl)
-                .ToList();
+
+            // Only treat the last URL as a separate "logo" (excluded from the product image
+            // rotation) when there's at least one other image. If it's the sole image, it's the
+            // product's own photo (e.g. logo upload failed or was never a distinct image) - excluding
+            // it would leave `images` empty and make images[imageIndex++] below throw, skipping the
+            // whole offer.
+            var images = allImageUrls.Count > 1
+                ? allImageUrls.Where(url => url != logoUrl).ToList()
+                : allImageUrls;
             var imageIndex = 0;
 
             var nameH1Html = $"<h1>{RemoveHiddenAscii(System.Net.WebUtility.HtmlEncode(product.Name))}</h1>";

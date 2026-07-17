@@ -60,12 +60,12 @@ namespace Allegro.Aduos.Gaska.OrdersService
 
                 async Task MeasureStepAsync(string stepName, Func<Task> action)
                 {
-                    _logger.LogInformation($"Starting {stepName}...");
+                    _logger.LogInformation("Starting {StepName}...", stepName);
                     var sw = System.Diagnostics.Stopwatch.StartNew();
                     await action();
                     sw.Stop();
                     stepTimes[stepName] = sw.Elapsed;
-                    _logger.LogInformation($"{stepName} completed in {FormatDuration(sw.Elapsed)}.");
+                    _logger.LogInformation("{StepName} completed in {Duration}.", stepName, FormatDuration(sw.Elapsed));
                 }
 
                 await MeasureStepAsync("Sync orders from Allegro", () => orderService.SyncOrdersFromAllegro(_appSettings.AllegroDeliveryNames));
@@ -79,10 +79,10 @@ namespace Allegro.Aduos.Gaska.OrdersService
 
                 foreach (var kv in stepTimes)
                 {
-                    _logger.LogInformation($" - {kv.Key}: {FormatDuration(kv.Value)}");
+                    _logger.LogInformation(" - {StepName}: {Duration}", kv.Key, FormatDuration(kv.Value));
                 }
 
-                _logger.LogInformation($"=== Total time: {FormatDuration(totalSw.Elapsed)} ===");
+                _logger.LogInformation("=== Total time: {Duration} ===", FormatDuration(totalSw.Elapsed));
             }
             catch (Exception ex)
             {

@@ -171,6 +171,9 @@
     <None Update="Migrations\20260715_01_AddDropshippingColumnsToAllegroOrders.sql">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Migrations\20260715_01_ChangeMessageToSellerNullable.sql">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Migrations\20260715_02_AddProductsGetByIdsStoredProcedure.sql">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
@@ -193,6 +196,9 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Migrations\20260717_04_ExcludeManualOrdersFromUpdateInAllegro.sql">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Migrations\20260717_05_ExcludeTimeoutPlaceholdersFromExternalInfoRefresh.sql">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Resources\Images\logo.jpg">

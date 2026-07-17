@@ -7,5 +7,5 @@ IF EXISTS (
 )
 BEGIN
     ALTER TABLE dbo.AllegroOrders
-    ALTER COLUMN MessageToSeller VARCHAR(MAX) NULL;
+    ALTER COLUMN MessageToSeller NVARCHAR(MAX) NULL;
 END

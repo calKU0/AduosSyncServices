@@ -71,53 +71,54 @@ namespace AduosSyncServices.Infrastructure.Services
                     if (!orders.Any())
                         break;
 
-                    var semaphore = new SemaphoreSlim(5);
-
-                    foreach (var order in orders)
+                    using (var semaphore = new SemaphoreSlim(5))
                     {
-                        try
+                        foreach (var order in orders)
                         {
-                            var offerTasks = order.LineItems.Select(async item =>
+                            try
                             {
-                                await semaphore.WaitAsync(ct);
-                                try
+                                var offerTasks = order.LineItems.Select(async item =>
                                 {
-                                    return await _allegroApiClient.GetMinimalOfferInfo(item.Offer.Id, ct);
-                                }
-                                finally
+                                    await semaphore.WaitAsync(ct);
+                                    try
+                                    {
+                                        return await _allegroApiClient.GetMinimalOfferInfo(item.Offer.Id, ct);
+                                    }
+                                    finally
+                                    {
+                                        semaphore.Release();
+                                    }
+                                }).ToList();
+
+                                var offers = await Task.WhenAll(offerTasks);
+
+                                var shippingRateNames = shippingRates.ShippingRates
+                                    .Where(sr => deliveryNames.Contains(sr.Name)) // optional: only keep your delivery names
+                                    .ToDictionary(sr => sr.Id, sr => sr.Name, StringComparer.OrdinalIgnoreCase);
+
+                                var offerShippingRates = offers.ToDictionary(
+                                    o => o.Id,
+                                    o => shippingRateNames.TryGetValue(o.Delivery.ShippingRates.Id, out var name) ? name : "Unknown"
+                                );
+
+                                // Check if all items use the Gąska shipping method
+                                bool allItemsUseGaska = offerShippingRates.Values.All(name => deliveryNames.Contains(name));
+
+                                if (!allItemsUseGaska)
                                 {
-                                    semaphore.Release();
+                                    _logger.LogInformation("Skipping order {OrderId} - not all items use {ShippingRate} shipping method.", order.Id, deliveryNamesDisplay);
+                                    continue;
                                 }
-                            }).ToList();
 
-                            var offers = await Task.WhenAll(offerTasks);
-
-                            var shippingRateNames = shippingRates.ShippingRates
-                                .Where(sr => deliveryNames.Contains(sr.Name)) // optional: only keep your delivery names
-                                .ToDictionary(sr => sr.Id, sr => sr.Name, StringComparer.OrdinalIgnoreCase);
-
-                            var offerShippingRates = offers.ToDictionary(
-                                o => o.Id,
-                                o => shippingRateNames.TryGetValue(o.Delivery.ShippingRates.Id, out var name) ? name : "Unknown"
-                            );
-
-                            // Check if all items use the Gąska shipping method
-                            bool allItemsUseGaska = offerShippingRates.Values.All(name => deliveryNames.Contains(name));
-
-                            if (!allItemsUseGaska)
-                            {
-                                _logger.LogInformation("Skipping order {OrderId} - not all items use {ShippingRate} shipping method.", order.Id, deliveryNamesDisplay);
-                                continue;
+                                // Save the order
+                                var model = MapAllegroOrderToModel(order, offerShippingRates);
+                                await _orderRepo.SaveAllegroOrder(model);
+                                _logger.LogInformation("Order {OrderId} synced from Allegro.", order.Id);
                             }
-
-                            // Save the order
-                            var model = MapAllegroOrderToModel(order, offerShippingRates);
-                            await _orderRepo.SaveAllegroOrder(model);
-                            _logger.LogInformation("Order {OrderId} synced from Allegro.", order.Id);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Failed to sync order {OrderId} from Allegro.", order.Id);
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, "Failed to sync order {OrderId} from Allegro.", order.Id);
+                            }
                         }
                     }
 
@@ -340,8 +341,8 @@ namespace AduosSyncServices.Infrastructure.Services
             var address = allegroOrder.Delivery?.Address ?? allegroOrder.Buyer?.Address;
             var fulfillment = allegroOrder.Fulfillment;
 
-            string street = address.Street?.Trim() ?? "";
-            string city = address.City?.Trim() ?? "";
+            string street = address?.Street?.Trim() ?? "";
+            string city = address?.City?.Trim() ?? "";
 
             // Detect and split street if it contains a city and "ul." pattern
             if (!string.IsNullOrEmpty(street))
@@ -363,11 +364,11 @@ namespace AduosSyncServices.Infrastructure.Services
                 Status = allegroOrder.Status,
                 RealizeStatus = fulfillment.Status,
                 ClientNickname = allegroOrder.Buyer?.Login?.Trim(),
-                RecipientFirstName = (address.FirstName ?? allegroOrder.Buyer?.FirstName).Trim(),
-                RecipientLastName = (address.LastName ?? allegroOrder.Buyer?.LastName).Trim(),
+                RecipientFirstName = (address?.FirstName ?? allegroOrder.Buyer?.FirstName ?? "").Trim(),
+                RecipientLastName = (address?.LastName ?? allegroOrder.Buyer?.LastName ?? "").Trim(),
                 RecipientStreet = street,
                 RecipientCity = city,
-                RecipientPostalCode = address?.ZipCode?.Trim() ?? address?.PostCode.Trim(),
+                RecipientPostalCode = address?.ZipCode?.Trim() ?? address?.PostCode?.Trim() ?? "",
                 RecipientCountry = address?.CountryCode?.Trim() ?? "",
                 RecipientCompanyName = address?.CompanyName ?? allegroOrder.Buyer?.CompanyName,
                 RecipientEmail = allegroOrder.Buyer?.Email,
