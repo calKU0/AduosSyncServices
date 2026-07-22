@@ -438,7 +438,7 @@
                                 <Button x:Name="BtnRefreshOrders" Style="{StaticResource PrimaryActionButtonStyle}" Content="Odśwież" Click="BtnRefreshOrders_Click" />
                                 <Button x:Name="BtnAddOrder" Style="{StaticResource PrimaryActionButtonStyle}" Content="Dodaj zamówienie" Click="BtnAddOrder_Click" />
                                 <Button x:Name="BtnPlaceOrder" Style="{StaticResource PrimaryActionButtonStyle}" Content="Złóż zamówienie u dostawcy" Click="BtnPlaceOrder_Click" IsEnabled="False" />
-                                <Button x:Name="BtnDeleteOrders" Style="{StaticResource DangerActionButtonStyle}" Content="Usuń zamówienie ręczne" Click="BtnDeleteOrders_Click" IsEnabled="False"
+                                <Button x:Name="BtnDeleteOrders" Style="{StaticResource DangerActionButtonStyle}" Content="Usuń zamówienie" Click="BtnDeleteOrders_Click" IsEnabled="False"
                                         ToolTip="Usuwa zaznaczone (lub wybrane w tabeli) zamówienia ręczne, które nie zostały jeszcze złożone u dostawcy." />
                                 <TextBlock x:Name="SelectedOrdersCountText" Text="Zaznaczono: 0" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="#6B7280" />
                                 <StackPanel x:Name="RefreshStatusPanel" Orientation="Horizontal" Visibility="Collapsed" Margin="12,0,0,0" VerticalAlignment="Center">

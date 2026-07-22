@@ -239,37 +239,42 @@ namespace AduosSyncServices.ServicesManager
 
         private void LvOrders_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            // Row highlight (not a checkbox) drives the single-order delete affordance.
-            UpdateDeleteButtonState();
+            // The row highlight (not a checkbox) drives the single-order place/delete affordances.
+            UpdateActionButtonsState();
         }
 
-        private void UpdatePlaceOrderButtonState()
-        {
-            var selectedCount = _orders.Count(o => o.IsSelected);
-            BtnPlaceOrder.IsEnabled = selectedCount > 0;
-            SelectedOrdersCountText.Text = $"Zaznaczono: {selectedCount}";
-            UpdateDeleteButtonState();
-        }
+        private void UpdatePlaceOrderButtonState() => UpdateActionButtonsState();
 
-        // Enabled when there's at least one deletable target: a checked deletable row, or - when
-        // nothing is checked - a highlighted deletable row.
-        private void UpdateDeleteButtonState()
+        private void UpdateActionButtonsState()
         {
+            var checkedCount = _orders.Count(o => o.IsSelected);
+            SelectedOrdersCountText.Text = $"Zaznaczono: {checkedCount}";
+            BtnPlaceOrder.IsEnabled = GetPlacementTargets().Count > 0;
             BtnDeleteOrders.IsEnabled = GetDeletionTargets().Count > 0;
         }
 
         // Checked rows take priority; if none are checked, fall back to the single highlighted row.
-        // Either way only manual, not-yet-placed orders (CanDelete) are returned.
-        private List<OrderRowViewModel> GetDeletionTargets()
-        {
-            var checkedDeletable = _orders.Where(o => o.IsSelected && o.CanDelete).ToList();
-            if (checkedDeletable.Count > 0)
-                return checkedDeletable;
+        // Either way only rows that satisfy the placement conditions (CanSelect) are returned.
+        private List<OrderRowViewModel> GetPlacementTargets() =>
+            GetActionTargets(o => o.CanSelect);
 
+        // Checked rows take priority; if none are checked, fall back to the single highlighted row.
+        // Either way only manual, not-yet-placed orders (CanDelete) are returned.
+        private List<OrderRowViewModel> GetDeletionTargets() =>
+            GetActionTargets(o => o.CanDelete);
+
+        private List<OrderRowViewModel> GetActionTargets(Func<OrderRowViewModel, bool> isEligible)
+        {
+            var checkedEligible = _orders.Where(o => o.IsSelected && isEligible(o)).ToList();
+            if (checkedEligible.Count > 0)
+                return checkedEligible;
+
+            // Any checkbox ticked means the user is working with the checked set - don't silently
+            // fall back to the highlighted row.
             if (_orders.Any(o => o.IsSelected))
                 return new List<OrderRowViewModel>();
 
-            return LvOrders.SelectedItem is OrderRowViewModel { CanDelete: true } row
+            return LvOrders.SelectedItem is OrderRowViewModel row && isEligible(row)
                 ? new List<OrderRowViewModel> { row }
                 : new List<OrderRowViewModel>();
         }
@@ -320,7 +325,7 @@ namespace AduosSyncServices.ServicesManager
             }
             finally
             {
-                UpdateDeleteButtonState();
+                UpdateActionButtonsState();
             }
         }
 
@@ -394,17 +399,11 @@ namespace AduosSyncServices.ServicesManager
 
         private void BtnPlaceOrder_Click(object sender, RoutedEventArgs e)
         {
-            var selectedRows = _orders.Where(o => o.IsSelected).ToList();
+            // Checked rows, or - when nothing is checked - the single highlighted row. GetPlacementTargets
+            // only returns CanSelect rows, so the already-placed / wrong-status cases are already excluded.
+            var selectedRows = GetPlacementTargets();
             if (selectedRows.Count == 0)
                 return;
-
-            var alreadyOrdered = selectedRows.Where(o => o.SentToExternalCompany).ToList();
-            if (alreadyOrdered.Count > 0)
-            {
-                _dialogService.ShowError(
-                    $"Następujące zamówienia zostały już złożone u dostawcy i nie mogą zostać złożone ponownie: {string.Join(", ", alreadyOrdered.Select(o => o.AllegroId))}.");
-                return;
-            }
 
             var selectedOrders = selectedRows.Select(o => o.Order).ToList();
 
