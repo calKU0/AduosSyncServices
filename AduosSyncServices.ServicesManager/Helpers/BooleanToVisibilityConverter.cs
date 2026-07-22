@@ -8,7 +8,13 @@ namespace AduosSyncServices.ServicesManager.Helpers
     {
         public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         {
-            return value is true ? Visibility.Visible : Visibility.Collapsed;
+            var isTrue = value is true;
+
+            // ConverterParameter="invert" flips the result (Visible when false).
+            if (parameter is string s && string.Equals(s, "invert", StringComparison.OrdinalIgnoreCase))
+                isTrue = !isTrue;
+
+            return isTrue ? Visibility.Visible : Visibility.Collapsed;
         }
 
         public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)

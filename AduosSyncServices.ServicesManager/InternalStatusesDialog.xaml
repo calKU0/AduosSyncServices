@@ -1,0 +1,70 @@
+<Window x:Class="AduosSyncServices.ServicesManager.InternalStatusesDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Statusy wewnętrzne" Height="520" Width="560" WindowStartupLocation="CenterOwner"
+        FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="14">
+    <Border Padding="20" Background="White">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Text="Zarządzaj listą statusów wewnętrznych. Zmiany zostaną zapisane po kliknięciu „Zapisz”." Foreground="#6B7280" TextWrapping="Wrap" Margin="0,0,0,12" />
+
+            <!-- Column headers -->
+            <Grid Grid.Row="1" Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Kolor" FontWeight="SemiBold" Foreground="#6B7280" FontSize="12" />
+                <TextBlock Grid.Column="1" Text="Nazwa" FontWeight="SemiBold" Foreground="#6B7280" FontSize="12" Margin="8,0,0,0" />
+            </Grid>
+
+            <Border Grid.Row="2" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Padding="4">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <ItemsControl x:Name="IcStatuses">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="150" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <ComboBox Grid.Column="0" ItemsSource="{Binding AvailableColors}" SelectedItem="{Binding Color, Mode=TwoWay}" Margin="0,0,8,0"
+                                                  VerticalAlignment="Center" VerticalContentAlignment="Center">
+                                            <ComboBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Border Width="14" Height="14" CornerRadius="7" Margin="0,0,6,0" VerticalAlignment="Center"
+                                                                Background="{Binding Converter={StaticResource HexToBrush}}" />
+                                                        <TextBlock Text="{Binding}" VerticalAlignment="Center" FontSize="12" />
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ComboBox.ItemTemplate>
+                                        </ComboBox>
+                                        <TextBox Grid.Column="1" Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Padding="6,4" VerticalAlignment="Center" VerticalContentAlignment="Center" Margin="0,0,8,0" />
+                                        <Button Grid.Column="2" Style="{StaticResource DangerActionButtonStyle}" Content="Usuń" Padding="10,6" Margin="0" VerticalAlignment="Center" Click="BtnRemove_Click" Tag="{Binding}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock x:Name="EmptyText" Text="Brak statusów. Dodaj pierwszy poniżej." Foreground="#9CA3AF" Padding="10" Visibility="Collapsed" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <DockPanel Grid.Row="3" Margin="0,12,0,0" LastChildFill="False">
+                <Button x:Name="BtnAdd" DockPanel.Dock="Left" Style="{StaticResource SecondaryButtonStyle}" Content="Dodaj status" Click="BtnAdd_Click" />
+                <Button x:Name="BtnSave" DockPanel.Dock="Right" Style="{StaticResource PrimaryActionButtonStyle}" Content="Zapisz" Click="BtnSave_Click" />
+                <Button x:Name="BtnCancel" DockPanel.Dock="Right" Style="{StaticResource SecondaryButtonStyle}" Content="Anuluj" Click="BtnCancel_Click" />
+            </DockPanel>
+        </Grid>
+    </Border>
+</Window>

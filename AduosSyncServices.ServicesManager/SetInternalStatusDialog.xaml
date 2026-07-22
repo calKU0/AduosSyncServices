@@ -1,0 +1,29 @@
+<Window x:Class="AduosSyncServices.ServicesManager.SetInternalStatusDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Ustaw status wewnętrzny" SizeToContent="Height" Width="440" WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize" FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="14">
+    <Border Padding="20" Background="White">
+        <StackPanel>
+            <TextBlock x:Name="HeaderText" FontWeight="SemiBold" Margin="0,0,0,12" TextWrapping="Wrap" />
+
+            <TextBlock Text="Status wewnętrzny" Foreground="#374151" Margin="0,0,0,4" />
+            <ComboBox x:Name="CbStatus" Margin="0,0,0,20">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal">
+                            <Border Width="14" Height="14" CornerRadius="7" Margin="0,0,8,0" VerticalAlignment="Center"
+                                    Background="{Binding Color, Converter={StaticResource HexToBrush}}" />
+                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="BtnCancel" Style="{StaticResource SecondaryButtonStyle}" Content="Anuluj" Click="BtnCancel_Click" />
+                <Button x:Name="BtnApply" Style="{StaticResource PrimaryActionButtonStyle}" Content="Ustaw" Click="BtnApply_Click" />
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>

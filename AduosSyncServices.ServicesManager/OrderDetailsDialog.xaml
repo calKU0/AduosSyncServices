@@ -116,6 +116,16 @@
                             <TextBlock Text="Data utworzenia:" Style="{StaticResource InfoLabelStyle}" />
                             <TextBlock Text="{Binding CreatedAt, StringFormat={}{0:yyyy-MM-dd HH:mm}}" Style="{StaticResource InfoValueStyle}" />
                         </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="Status wewnętrzny:" Style="{StaticResource InfoLabelStyle}" />
+                            <Border CornerRadius="12" Padding="12,4" VerticalAlignment="Center"
+                                    Background="{Binding InternalStatusColor, Converter={StaticResource HexToBrush}}"
+                                    Visibility="{Binding HasInternalStatus, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="{Binding InternalStatusName}" Foreground="White" FontWeight="SemiBold" FontSize="12" />
+                            </Border>
+                            <TextBlock Text="—" Style="{StaticResource InfoValueStyle}"
+                                       Visibility="{Binding HasInternalStatus, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
+                        </StackPanel>
                     </StackPanel>
                 </Grid>
 

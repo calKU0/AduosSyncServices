@@ -420,32 +420,38 @@
                     <!-- Toolbar: filters + actions -->
                     <Border Grid.Row="0" BorderBrush="#D1D5DB" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,8" Background="White">
                         <StackPanel>
-                            <StackPanel Orientation="Horizontal">
-                                <controls:MultiSelectFilterControl x:Name="CbStatusFilter" Width="170" Margin="0,0,12,0"
+                            <!-- Filters wrap to the next line on narrow windows instead of overflowing. -->
+                            <WrapPanel>
+                                <controls:MultiSelectFilterControl x:Name="CbStatusFilter" Width="170" Margin="0,0,12,8"
                                                                     Header="Status zamówienia" SelectionChanged="Filter_SelectionChanged" />
-                                <controls:MultiSelectFilterControl x:Name="CbRealizeStatusFilter" Width="190" Margin="0,0,12,0"
+                                <controls:MultiSelectFilterControl x:Name="CbRealizeStatusFilter" Width="190" Margin="0,0,12,8"
                                                                     Header="Status realizacji" SelectionChanged="Filter_SelectionChanged" />
-                                <controls:MultiSelectFilterControl x:Name="CbSentToExternalFilter" Width="170" Margin="0,0,12,0"
+                                <controls:MultiSelectFilterControl x:Name="CbSentToExternalFilter" Width="170" Margin="0,0,12,8"
                                                                     Header="Czy zamówione u dostawcy" SelectionChanged="Filter_SelectionChanged" />
-                                <controls:MultiSelectFilterControl x:Name="CbPaymentTypeFilter" Width="190" Margin="0,0,12,0"
+                                <controls:MultiSelectFilterControl x:Name="CbPaymentTypeFilter" Width="190" Margin="0,0,12,8"
                                                                     Header="Metoda płatności" SelectionChanged="Filter_SelectionChanged" />
-                                <controls:MultiSelectFilterControl x:Name="CbSourceFilter" Width="170" Margin="0,0,12,0"
+                                <controls:MultiSelectFilterControl x:Name="CbSourceFilter" Width="170" Margin="0,0,12,8"
                                                                     Header="Źródło zamówienia" SelectionChanged="Filter_SelectionChanged" />
-                                <controls:MultiSelectFilterControl x:Name="CbDropshippingFilter" Width="150" Margin="0,0,12,0"
+                                <controls:MultiSelectFilterControl x:Name="CbDropshippingFilter" Width="150" Margin="0,0,12,8"
                                                                     Header="Dropshipping" SelectionChanged="Filter_SelectionChanged" />
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <controls:MultiSelectFilterControl x:Name="CbInternalStatusFilter" Width="190" Margin="0,0,12,8"
+                                                                    Header="Status wewnętrzny" SelectionChanged="Filter_SelectionChanged" />
+                            </WrapPanel>
+                            <!-- Only global actions live here now; per-selection actions (place / set status /
+                                 delete / details) moved to the grid's right-click context menu. Wraps too. -->
+                            <WrapPanel Margin="0,2,0,0">
                                 <Button x:Name="BtnRefreshOrders" Style="{StaticResource PrimaryActionButtonStyle}" Content="Odśwież" Click="BtnRefreshOrders_Click" />
                                 <Button x:Name="BtnAddOrder" Style="{StaticResource PrimaryActionButtonStyle}" Content="Dodaj zamówienie" Click="BtnAddOrder_Click" />
-                                <Button x:Name="BtnPlaceOrder" Style="{StaticResource PrimaryActionButtonStyle}" Content="Złóż zamówienie u dostawcy" Click="BtnPlaceOrder_Click" IsEnabled="False" />
-                                <Button x:Name="BtnDeleteOrders" Style="{StaticResource DangerActionButtonStyle}" Content="Usuń zamówienie" Click="BtnDeleteOrders_Click" IsEnabled="False"
-                                        ToolTip="Usuwa zaznaczone (lub wybrane w tabeli) zamówienia ręczne, które nie zostały jeszcze złożone u dostawcy." />
+                                <Button x:Name="BtnManageInternalStatuses" Style="{StaticResource SecondaryButtonStyle}" Content="Statusy wewnętrzne" Click="BtnManageInternalStatuses_Click"
+                                        ToolTip="Zarządzaj listą statusów wewnętrznych (dodaj, edytuj, usuń)." />
                                 <TextBlock x:Name="SelectedOrdersCountText" Text="Zaznaczono: 0" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="#6B7280" />
                                 <StackPanel x:Name="RefreshStatusPanel" Orientation="Horizontal" Visibility="Collapsed" Margin="12,0,0,0" VerticalAlignment="Center">
                                     <controls:LoadingSpinner Width="18" Height="18" Margin="0,0,8,0" />
                                     <TextBlock x:Name="RefreshStatusText" VerticalAlignment="Center" Foreground="#374151" />
                                 </StackPanel>
-                            </StackPanel>
+                            </WrapPanel>
+                            <TextBlock Text="Akcje na zaznaczonych (złóż, ustaw status, usuń) — kliknij zamówienie prawym przyciskiem myszy."
+                                       Foreground="#9CA3AF" FontSize="12" Margin="0,6,0,0" />
                         </StackPanel>
                     </Border>
 
@@ -469,10 +475,29 @@
                                   RowHeight="50"
                                   IsReadOnly="True"
                                   SelectionUnit="FullRow"
+                                  SelectionMode="Single"
                                   Background="White"
                                   EnableRowVirtualization="True"
                                   VirtualizingPanel.IsVirtualizing="True"
                                   VirtualizingPanel.VirtualizationMode="Recycling">
+                            <!-- Per-selection actions live here (declutters the toolbar). Right-click also
+                                 selects the row first (see OrderRow_PreviewMouseRightButtonDown) so the menu
+                                 acts on the clicked row when nothing is checked. -->
+                            <DataGrid.ContextMenu>
+                                <ContextMenu Opened="OrdersContextMenu_Opened">
+                                    <MenuItem x:Name="MenuItemDetails" Header="Szczegóły" Click="MenuItemDetails_Click" />
+                                    <Separator />
+                                    <MenuItem x:Name="MenuItemPlace" Header="Złóż zamówienie u dostawcy" Click="BtnPlaceOrder_Click" />
+                                    <MenuItem x:Name="MenuItemSetStatus" Header="Ustaw status wewnętrzny" Click="BtnSetInternalStatus_Click" />
+                                    <Separator />
+                                    <MenuItem x:Name="MenuItemDelete" Header="Usuń zamówienie" Click="BtnDeleteOrders_Click" />
+                                </ContextMenu>
+                            </DataGrid.ContextMenu>
+                            <DataGrid.RowStyle>
+                                <Style TargetType="DataGridRow">
+                                    <EventSetter Event="PreviewMouseRightButtonDown" Handler="OrderRow_PreviewMouseRightButtonDown" />
+                                </Style>
+                            </DataGrid.RowStyle>
                             <!-- DataGridCell's CellStyle triggers (Background/Padding) do not reliably render in this
                                  DataGrid theme, so every column below paints its own padding on a Border inside the
                                  cell's DataTemplate instead - the same mechanism already used for the Dropshipping badge. -->
@@ -519,28 +544,9 @@
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <Border Style="{StaticResource OrderCellBorderStyle}">
-                                                <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" IsEnabled="{Binding CanSelect}" HorizontalAlignment="Center" VerticalAlignment="Center" Click="OrderCheckBox_Click">
-                                                    <CheckBox.Style>
-                                                        <Style TargetType="CheckBox">
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding CanSelect}" Value="False">
-                                                                    <Setter Property="ToolTip" Value="{Binding CannotPlaceReason}" />
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </CheckBox.Style>
-                                                </CheckBox>
-                                            </Border>
-                                        </DataTemplate>
-                                    </DataGridTemplateColumn.CellTemplate>
-                                </DataGridTemplateColumn>
-                                <!-- MaxWidth caps this column so a long Allegro id can't grow unbounded and starve the
-                                     Nr śledzenia "*" column below - it trims with an ellipsis instead, full value on hover. -->
-                                <DataGridTemplateColumn Header="Nr Allegro" Width="Auto" MaxWidth="140">
-                                    <DataGridTemplateColumn.CellTemplate>
-                                        <DataTemplate>
-                                            <Border Style="{StaticResource OrderCellBorderStyle}">
-                                                <TextBlock Text="{Binding AllegroId}" Style="{StaticResource OrderCellTextStyle}" TextTrimming="CharacterEllipsis" ToolTip="{Binding AllegroId}" />
+                                                <!-- Always selectable: any order can be checked (e.g. to set an internal
+                                                     status). Placement/deletion eligibility is enforced on those buttons. -->
+                                                <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" HorizontalAlignment="Center" VerticalAlignment="Center" Click="OrderCheckBox_Click" />
                                             </Border>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
@@ -592,6 +598,20 @@
                                                             </Style>
                                                         </TextBlock.Style>
                                                     </TextBlock>
+                                                </Border>
+                                            </Border>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Status wewnętrzny" Width="Auto">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource OrderCellBorderStyle}">
+                                                <Border CornerRadius="12" Padding="12,5" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                        Background="{Binding InternalStatusColor, Converter={StaticResource HexToBrush}}"
+                                                        Visibility="{Binding HasInternalStatus, Converter={StaticResource BoolToVis}}">
+                                                    <TextBlock Text="{Binding InternalStatusName}" Foreground="White" FontWeight="SemiBold" FontSize="12"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
                                                 </Border>
                                             </Border>
                                         </DataTemplate>

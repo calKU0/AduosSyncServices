@@ -156,6 +156,28 @@ namespace AduosSyncServices.Infrastructure.Repositories
             return deleted > 0;
         }
 
+        public async Task SetOrdersInternalStatus(IReadOnlyCollection<int> orderIds, int? internalStatusId)
+        {
+            var ids = orderIds?.Distinct().ToList() ?? new List<int>();
+            if (ids.Count == 0)
+                return;
+
+            using var conn = _context.CreateConnection();
+            conn.Open();
+
+            await conn.ExecuteAsync(
+                "dbo.AllegroOrders_SetInternalStatus",
+                new
+                {
+                    OrderIds = string.Join(",", ids),
+                    InternalStatusId = internalStatusId,
+                    IntegrationCompany = _company,
+                    Account = _account
+                },
+                commandType: CommandType.StoredProcedure
+            );
+        }
+
         public async Task SaveAllegroOrder(AllegroOrder order)
         {
             using var conn = _context.CreateConnection();

@@ -9,6 +9,7 @@
              have to be repeated (and inevitably missed) per window. -->
 
         <helpers:BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <helpers:HexColorToBrushConverter x:Key="HexToBrush" />
 
         <!-- Solid blue call-to-action button. -->
         <Style x:Key="PrimaryActionButtonStyle" TargetType="Button">
