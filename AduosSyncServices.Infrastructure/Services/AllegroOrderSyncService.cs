@@ -18,8 +18,12 @@ namespace AduosSyncServices.Infrastructure.Services
         private readonly IAllegroApiClient _allegroApiClient;
         private readonly IGaskaApiClient _gaskaApiClient;
 
-        // How many orders within a page are saved to the DB concurrently. Each SaveAllegroOrder opens
-        // its own connection/transaction, so this just bounds how many run at once.
+        private const int OrdersPageSize = 100;
+
+        // Bounds on concurrency. Order pages are fetched in parallel from Allegro (the first page
+        // reveals the total, the rest are fetched at once); orders are then saved in parallel, each
+        // SaveAllegroOrder opening its own connection/transaction.
+        private const int OrderFetchParallelism = 5;
         private const int OrderSaveParallelism = 5;
 
         public AllegroOrderSyncService(ILogger<AllegroOrderSyncService> logger, IOrderRepository orderRepo, IOfferRepository offerRepo, IAllegroApiClient allegroApiClient, IGaskaApiClient gaskaApiClient)
@@ -33,14 +37,11 @@ namespace AduosSyncServices.Infrastructure.Services
 
         public async Task SyncOrdersFromAllegro(List<string> allegroDeliveryNames, IProgress<string>? progress = null, CancellationToken ct = default)
         {
-            const int limit = 100;
-            int offset = 0, totalFetched = 0;
             const string minBoughtFrom = "2026-07-11T00:00:00Z";
             var minBoughtDate = DateTime.Parse(minBoughtFrom, null, DateTimeStyles.AdjustToUniversal);
             var sevenDaysAgo = DateTime.UtcNow.AddDays(-4);
             var boughtDate = sevenDaysAgo < minBoughtDate ? minBoughtDate : sevenDaysAgo;
             string boughtDateIso = boughtDate.ToString("yyyy-MM-ddTHH:mm:ssZ");
-            var deliveryNamesDisplay = string.Join(", ", allegroDeliveryNames ?? new List<string>());
 
             try
             {
@@ -56,75 +57,119 @@ namespace AduosSyncServices.Infrastructure.Services
                     return;
                 }
 
-                // An offer's shipping method is already stored locally (AllegroOffers.DeliveryName),
-                // populated by the products/offers sync - read it from the DB instead of calling the
-                // Allegro API once per line item just to learn its shipping rate.
-                progress?.Report("Wczytywanie ofert z bazy...");
-                var offers = await _offerRepo.GetAllOffers(ct);
-                var deliveryNameByOfferId = offers
-                    .Where(o => !string.IsNullOrWhiteSpace(o.Id))
-                    .GroupBy(o => o.Id, StringComparer.OrdinalIgnoreCase)
-                    .ToDictionary(g => g.Key, g => g.First().DeliveryName ?? string.Empty, StringComparer.OrdinalIgnoreCase);
-
-                while (true)
+                // 1. Pull every order page from Allegro (pages after the first are fetched in parallel).
+                progress?.Report("Pobieranie zamówień z Allegro...");
+                var orders = await FetchAllOrdersAsync(boughtDateIso, progress, ct);
+                if (orders.Count == 0)
                 {
-                    progress?.Report($"Pobieranie zamówień z Allegro (offset {offset})...");
-                    var response = await _allegroApiClient.GetOrders(new AllegroGetOrdersRequest
-                    {
-                        Limit = limit,
-                        Offset = offset,
-                        DateFrom = boughtDateIso
-                    }, ct);
-
-                    var orders = response?.CheckoutForms ?? Enumerable.Empty<AllegroGetOrdersResponse.CheckoutForm>();
-                    if (!orders.Any())
-                        break;
-
-                    await Parallel.ForEachAsync(
-                        orders,
-                        new ParallelOptions { MaxDegreeOfParallelism = OrderSaveParallelism, CancellationToken = ct },
-                        async (order, _) =>
-                        {
-                            try
-                            {
-                                // Every line item's offer must ship via one of our Gąska delivery
-                                // methods (looked up locally); if any item doesn't, skip the order.
-                                bool allItemsUseGaska = order.LineItems.All(item =>
-                                    deliveryNameByOfferId.TryGetValue(item.Offer.Id, out var deliveryName)
-                                    && deliveryNames.Contains(deliveryName));
-
-                                if (!allItemsUseGaska)
-                                {
-                                    _logger.LogInformation("Skipping order {OrderId} - not all items use a Gąska shipping method.", order.Id);
-                                    return;
-                                }
-
-                                var model = MapAllegroOrderToModel(order, deliveryNameByOfferId);
-                                await _orderRepo.SaveAllegroOrder(model);
-                                _logger.LogInformation("Order {OrderId} synced from Allegro.", order.Id);
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.LogError(ex, "Failed to sync order {OrderId} from Allegro.", order.Id);
-                            }
-                        });
-
-                    totalFetched += orders.Count();
-                    _logger.LogInformation("Fetched {Count} orders from Allegro so far.", totalFetched);
-                    progress?.Report($"Pobrano {totalFetched} zamówień z Allegro...");
-
-                    offset += limit;
-                    if (totalFetched >= response.TotalCount) break;
+                    _logger.LogInformation("No orders returned from Allegro.");
+                    progress?.Report("Brak zamówień do synchronizacji.");
+                    return;
                 }
 
-                _logger.LogInformation("Finished syncing {Count} orders from Allegro.", totalFetched);
-                progress?.Report($"Zakończono synchronizację {totalFetched} zamówień z Allegro.");
+                // 2. Resolve each line item's shipping method from the offers referenced by these
+                //    orders (one targeted DB read), instead of an Allegro API call per line item.
+                progress?.Report("Wczytywanie metod dostawy ofert z bazy...");
+                var offerIds = orders
+                    .SelectMany(o => o.LineItems ?? new List<AllegroGetOrdersResponse.LineItem>())
+                    .Select(li => li.Offer?.Id)
+                    .Where(id => !string.IsNullOrWhiteSpace(id))
+                    .Select(id => id!)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                var deliveryNameByOfferId = await _offerRepo.GetOfferDeliveryNamesByIds(offerIds, ct);
+
+                // 3. Save the qualifying orders in parallel (MapAllegroOrderToModel is pure and each
+                //    SaveAllegroOrder uses its own connection, so this is safe to fan out).
+                progress?.Report($"Zapisywanie {orders.Count} zamówień...");
+                var syncedCount = 0;
+                await Parallel.ForEachAsync(
+                    orders,
+                    new ParallelOptions { MaxDegreeOfParallelism = OrderSaveParallelism, CancellationToken = ct },
+                    async (order, _) =>
+                    {
+                        try
+                        {
+                            // Every line item's offer must ship via one of our Gąska delivery methods
+                            // (looked up locally); if any item doesn't, skip the order.
+                            bool allItemsUseGaska = (order.LineItems ?? new List<AllegroGetOrdersResponse.LineItem>()).All(item =>
+                                item.Offer?.Id is { } offerId
+                                && deliveryNameByOfferId.TryGetValue(offerId, out var deliveryName)
+                                && deliveryNames.Contains(deliveryName));
+
+                            if (!allItemsUseGaska)
+                            {
+                                _logger.LogInformation("Skipping order {OrderId} - not all items use a Gąska shipping method.", order.Id);
+                                return;
+                            }
+
+                            var model = MapAllegroOrderToModel(order, deliveryNameByOfferId);
+                            await _orderRepo.SaveAllegroOrder(model);
+                            Interlocked.Increment(ref syncedCount);
+                            _logger.LogInformation("Order {OrderId} synced from Allegro.", order.Id);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Failed to sync order {OrderId} from Allegro.", order.Id);
+                        }
+                    });
+
+                _logger.LogInformation("Finished syncing {Synced}/{Total} orders from Allegro.", syncedCount, orders.Count);
+                progress?.Report($"Zakończono synchronizację {syncedCount} z {orders.Count} zamówień z Allegro.");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to sync orders from Allegro.");
                 progress?.Report($"Błąd podczas synchronizacji zamówień z Allegro: {ex.Message}");
             }
+        }
+
+        // Fetches all order pages for the window. The first page is fetched to learn the total count,
+        // then every remaining page is fetched in parallel (offset pagination is stateless, so page
+        // order doesn't matter here).
+        private async Task<List<AllegroGetOrdersResponse.CheckoutForm>> FetchAllOrdersAsync(
+            string boughtDateIso, IProgress<string>? progress, CancellationToken ct)
+        {
+            var firstPage = await _allegroApiClient.GetOrders(new AllegroGetOrdersRequest
+            {
+                Limit = OrdersPageSize,
+                Offset = 0,
+                DateFrom = boughtDateIso
+            }, ct);
+
+            var orders = new List<AllegroGetOrdersResponse.CheckoutForm>(firstPage?.CheckoutForms ?? new List<AllegroGetOrdersResponse.CheckoutForm>());
+            var totalCount = firstPage?.TotalCount ?? orders.Count;
+
+            if (orders.Count == 0 || orders.Count >= totalCount)
+                return orders;
+
+            var remainingOffsets = new List<int>();
+            for (int offset = OrdersPageSize; offset < totalCount; offset += OrdersPageSize)
+                remainingOffsets.Add(offset);
+
+            var pages = new System.Collections.Concurrent.ConcurrentBag<List<AllegroGetOrdersResponse.CheckoutForm>>();
+            await Parallel.ForEachAsync(
+                remainingOffsets,
+                new ParallelOptions { MaxDegreeOfParallelism = OrderFetchParallelism, CancellationToken = ct },
+                async (offset, token) =>
+                {
+                    var page = await _allegroApiClient.GetOrders(new AllegroGetOrdersRequest
+                    {
+                        Limit = OrdersPageSize,
+                        Offset = offset,
+                        DateFrom = boughtDateIso
+                    }, token);
+
+                    if (page?.CheckoutForms is { Count: > 0 } forms)
+                        pages.Add(forms);
+                });
+
+            foreach (var page in pages)
+                orders.AddRange(page);
+
+            progress?.Report($"Pobrano {orders.Count} zamówień z Allegro.");
+            return orders;
         }
 
         public async Task UpdateOrderGaskaInfo(IProgress<string>? progress = null, CancellationToken ct = default)

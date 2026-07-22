@@ -204,6 +204,9 @@
     <None Update="Migrations\20260717_06_AddDeleteManualOrderProcedure.sql">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Migrations\20260717_07_AddOffersGetDeliveryNamesByIdsProcedure.sql">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Resources\Images\logo.jpg">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

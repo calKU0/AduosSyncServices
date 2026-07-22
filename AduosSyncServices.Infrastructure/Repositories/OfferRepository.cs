@@ -214,6 +214,30 @@ namespace AduosSyncServices.Infrastructure.Repositories
                 commandType: CommandType.StoredProcedure)).ToList();
         }
 
+        public async Task<Dictionary<string, string>> GetOfferDeliveryNamesByIds(IReadOnlyCollection<string> offerIds, CancellationToken ct)
+        {
+            var ids = offerIds?
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList() ?? new List<string>();
+
+            if (ids.Count == 0)
+                return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            using var connection = _context.CreateConnection();
+            var rows = await connection.QueryAsync<AllegroOffer>(
+                new CommandDefinition(
+                    "AllegroOffers_GetDeliveryNamesByIds",
+                    new { Ids = string.Join(",", ids), Account = _account },
+                    commandType: CommandType.StoredProcedure,
+                    cancellationToken: ct));
+
+            return rows
+                .Where(o => !string.IsNullOrWhiteSpace(o.Id))
+                .GroupBy(o => o.Id, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First().DeliveryName ?? string.Empty, StringComparer.OrdinalIgnoreCase);
+        }
+
         public async Task<List<AllegroOffer>> GetOffersWithoutDetails(CancellationToken ct)
         {
             using var connection = _context.CreateConnection();
