@@ -18,10 +18,16 @@ namespace AduosSyncServices.ServicesManager
         private class CodAmountRow
         {
             public int AllegroOrderId { get; set; }
-            public string AllegroId { get; set; } = string.Empty;
+            public string ClientName { get; set; } = string.Empty;
             public decimal Amount { get; set; }
         }
-        private record LineItemRow(string AllegroId, string Code, string OfferName, int Quantity, string Unit);
+        private record LineItemRow(string ClientName, string Code, string OfferName, int Quantity, string Unit);
+
+        private static string GetClientName(AllegroOrder order)
+        {
+            var name = $"{order.RecipientFirstName} {order.RecipientLastName}".Trim();
+            return string.IsNullOrWhiteSpace(name) ? "-" : name;
+        }
 
         private readonly IGaskaOrderPlacementService _placementService;
         private readonly IProductRepository _productRepository;
@@ -44,7 +50,7 @@ namespace AduosSyncServices.ServicesManager
             _codRows = _orders.Select(o => new CodAmountRow
             {
                 AllegroOrderId = o.Id,
-                AllegroId = o.AllegroId,
+                ClientName = GetClientName(o),
                 Amount = o.Amount
             }).ToList();
             IcCodAmounts.ItemsSource = _codRows;
@@ -63,7 +69,7 @@ namespace AduosSyncServices.ServicesManager
                     Product? product = null;
                     productsById?.TryGetValue(i.ProductId, out product);
                     return new LineItemRow(
-                        o.AllegroId,
+                        GetClientName(o),
                         product?.Code ?? "-",
                         i.OfferName,
                         i.Quantity,

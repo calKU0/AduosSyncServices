@@ -25,7 +25,7 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                                    <TextBlock Text="{Binding AllegroId}" Width="Auto" MinWidth="140" VerticalAlignment="Center" Margin="0,0,10,0" />
+                                    <TextBlock Text="{Binding ClientName}" Width="Auto" MinWidth="140" VerticalAlignment="Center" Margin="0,0,10,0" />
                                     <TextBox Text="{Binding Amount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="120" />
                                 </StackPanel>
                             </DataTemplate>
@@ -45,11 +45,11 @@
                             <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource DialogGridHeaderStyle}" />
                         </DataGrid.ColumnHeaderStyle>
                         <DataGrid.Columns>
-                            <DataGridTemplateColumn Header="Nr Allegro" Width="130">
+                            <DataGridTemplateColumn Header="Klient" Width="150">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Border Style="{StaticResource DialogCellBorderStyle}">
-                                            <TextBlock Text="{Binding AllegroId}" Style="{StaticResource DialogCellTextStyle}" TextTrimming="CharacterEllipsis" ToolTip="{Binding AllegroId}" />
+                                            <TextBlock Text="{Binding ClientName}" Style="{StaticResource DialogCellTextStyle}" TextTrimming="CharacterEllipsis" ToolTip="{Binding ClientName}" />
                                         </Border>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>

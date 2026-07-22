@@ -77,6 +77,39 @@ namespace AduosSyncServices.ServicesManager.Models
         public OrderSource Source => Order.Source;
         public string SourceDisplay => Order.Source.GetDescription();
 
+        public int? InternalStatusId => Order.InternalStatusId;
+        public bool HasInternalStatus => Order.InternalStatusId.HasValue;
+
+        // Resolved from the loaded status list when rows are (re)built - the order itself only stores
+        // the id, so name/colour are set externally in LoadOrdersAsync.
+        private string? _internalStatusName;
+        public string? InternalStatusName
+        {
+            get => _internalStatusName;
+            set
+            {
+                if (_internalStatusName == value)
+                    return;
+
+                _internalStatusName = value;
+                OnPropertyChanged(nameof(InternalStatusName));
+            }
+        }
+
+        private string? _internalStatusColor;
+        public string? InternalStatusColor
+        {
+            get => _internalStatusColor;
+            set
+            {
+                if (_internalStatusColor == value)
+                    return;
+
+                _internalStatusColor = value;
+                OnPropertyChanged(nameof(InternalStatusColor));
+            }
+        }
+
         public string TrackingNumbers
         {
             get

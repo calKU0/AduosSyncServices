@@ -12,6 +12,9 @@ namespace AduosSyncServices.Contracts.Interfaces
         // when the order isn't manual or has already been sent to Gąska - the guard lives in the SP.
         public Task<bool> DeleteManualOrder(int orderId);
 
+        // Assigns (or clears, when internalStatusId is null) the internal status for the given orders.
+        public Task SetOrdersInternalStatus(IReadOnlyCollection<int> orderIds, int? internalStatusId);
+
         public Task<List<AllegroOrder>> GetOrdersToUpdateExternalInfo();
 
         public Task<List<AllegroOrder>> GetAllOrdersForExternalCompany();

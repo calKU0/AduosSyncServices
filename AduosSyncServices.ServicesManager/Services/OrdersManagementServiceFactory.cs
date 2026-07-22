@@ -21,6 +21,7 @@ namespace AduosSyncServices.ServicesManager.Services
     {
         public required IOrderRepository OrderRepository { get; init; }
         public required IProductRepository ProductRepository { get; init; }
+        public required IOrderInternalStatusRepository InternalStatusRepository { get; init; }
         public required IAllegroOrderSyncService SyncService { get; init; }
         public required IGaskaOrderPlacementService PlacementService { get; init; }
         public required List<string> AllegroDeliveryNames { get; init; }
@@ -48,6 +49,7 @@ namespace AduosSyncServices.ServicesManager.Services
             var orderRepository = new OrderRepository(dapperContext, repoSettings);
             var productRepository = new ProductRepository(dapperContext, repoSettings);
             var offerRepository = new OfferRepository(dapperContext, repoSettings);
+            var internalStatusRepository = new OrderInternalStatusRepository(dapperContext);
 
             var allegroCredentials = Options.Create(config.GetSection("AllegroApiCredentials").Get<AllegroApiCredentials>() ?? new AllegroApiCredentials());
             var tokenRepository = new DbTokenRepository(dapperContext, allegroCredentials);
@@ -75,6 +77,7 @@ namespace AduosSyncServices.ServicesManager.Services
             {
                 OrderRepository = orderRepository,
                 ProductRepository = productRepository,
+                InternalStatusRepository = internalStatusRepository,
                 SyncService = syncService,
                 PlacementService = placementService,
                 AllegroDeliveryNames = allegroDeliveryNames,
