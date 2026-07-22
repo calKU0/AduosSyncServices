@@ -8,6 +8,10 @@ namespace AduosSyncServices.Contracts.Interfaces
 
         public Task MarkAsOrderedInExternalCompany(int orderId, int externalOrderId, bool isDropshipping);
 
+        // Deletes a manual order that hasn't been placed with the supplier yet. Returns false (no-op)
+        // when the order isn't manual or has already been sent to Gąska - the guard lives in the SP.
+        public Task<bool> DeleteManualOrder(int orderId);
+
         public Task<List<AllegroOrder>> GetOrdersToUpdateExternalInfo();
 
         public Task<List<AllegroOrder>> GetAllOrdersForExternalCompany();

@@ -10,9 +10,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="..\..\..\client-logo.png" Link="Resources\client-logo.png">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
     <Content Include="setting.ico" />
   </ItemGroup>
 

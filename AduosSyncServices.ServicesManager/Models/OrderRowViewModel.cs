@@ -35,6 +35,11 @@ namespace AduosSyncServices.ServicesManager.Models
             && Order.RealizeStatus == AllegroOrderStatus.NEW
             && Order.Status == AllegroCheckoutFormStatus.READY_FOR_PROCESSING;
 
+        // Only manual orders that haven't been sent to the supplier yet can be deleted - synced
+        // Allegro orders and anything already placed in Gąska are protected (also enforced in the SP).
+        public bool CanDelete =>
+            Order.Source == OrderSource.Manual && !Order.SentToExternalCompany;
+
         public string CannotPlaceReason
         {
             get

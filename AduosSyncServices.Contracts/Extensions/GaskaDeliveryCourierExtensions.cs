@@ -7,9 +7,12 @@ namespace AduosSyncServices.Contracts.Extensions
         public static string ToGaskaDeliveryMethod(this GaskaDeliveryCourier courier) => courier switch
         {
             GaskaDeliveryCourier.Dpd => "DPD",
-            GaskaDeliveryCourier.Gls => "GLD",
+            GaskaDeliveryCourier.Gls => "GLS",
             GaskaDeliveryCourier.Fedex => "FedEx",
             GaskaDeliveryCourier.FedexDropshippingPobranie => "FedEx Dropshipping pobranie",
+            GaskaDeliveryCourier.Hellmann => "Hellmann",
+            GaskaDeliveryCourier.Schenker => "Schenker",
+            GaskaDeliveryCourier.PersonalCollection => "Odbiór własny",
             _ => throw new ArgumentOutOfRangeException(nameof(courier), courier, null)
         };
 
@@ -19,6 +22,9 @@ namespace AduosSyncServices.Contracts.Extensions
             GaskaDeliveryCourier.Gls => "GLS",
             GaskaDeliveryCourier.Fedex => "FedEx",
             GaskaDeliveryCourier.FedexDropshippingPobranie => "FedEx Dropshipping (pobranie)",
+            GaskaDeliveryCourier.Hellmann => "Hellmann",
+            GaskaDeliveryCourier.Schenker => "Schenker",
+            GaskaDeliveryCourier.PersonalCollection => "Odbiór własny",
             _ => throw new ArgumentOutOfRangeException(nameof(courier), courier, null)
         };
 

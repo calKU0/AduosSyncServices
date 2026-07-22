@@ -142,6 +142,20 @@ namespace AduosSyncServices.Infrastructure.Repositories
             );
         }
 
+        public async Task<bool> DeleteManualOrder(int orderId)
+        {
+            using var conn = _context.CreateConnection();
+            conn.Open();
+
+            var deleted = await conn.ExecuteScalarAsync<int>(
+                "dbo.AllegroOrders_DeleteManual",
+                new { Id = orderId, IntegrationCompany = _company, Account = _account },
+                commandType: CommandType.StoredProcedure
+            );
+
+            return deleted > 0;
+        }
+
         public async Task SaveAllegroOrder(AllegroOrder order)
         {
             using var conn = _context.CreateConnection();

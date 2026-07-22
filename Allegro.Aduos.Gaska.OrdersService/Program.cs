@@ -100,6 +100,7 @@ var host = Host.CreateDefaultBuilder(args)
 
         // Repositories
         services.AddScoped<IOrderRepository, OrderRepository>();
+        services.AddScoped<IOfferRepository, OfferRepository>();
         services.AddScoped<ITokenRepository, DbTokenRepository>();
 
         // Services

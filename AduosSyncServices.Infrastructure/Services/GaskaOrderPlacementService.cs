@@ -512,9 +512,6 @@ namespace AduosSyncServices.Infrastructure.Services
         private const string DefaultDeliveryEmail = "kontakt@agro-aduos.pl";
         private const string AllegroRelayEmailDomain = "@user.allegrogroup.pl";
 
-        private static string ResolveDeliveryEmail(string? recipientEmail) =>
-            string.IsNullOrWhiteSpace(recipientEmail) || recipientEmail.EndsWith(AllegroRelayEmailDomain, StringComparison.OrdinalIgnoreCase)
-                ? DefaultDeliveryEmail
-                : recipientEmail;
+        private static string ResolveDeliveryEmail(string? recipientEmail) => DefaultDeliveryEmail;
     }
 }

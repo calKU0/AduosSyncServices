@@ -47,6 +47,7 @@ namespace AduosSyncServices.ServicesManager.Services
             var dapperContext = new DapperContext(connectionString);
             var orderRepository = new OrderRepository(dapperContext, repoSettings);
             var productRepository = new ProductRepository(dapperContext, repoSettings);
+            var offerRepository = new OfferRepository(dapperContext, repoSettings);
 
             var allegroCredentials = Options.Create(config.GetSection("AllegroApiCredentials").Get<AllegroApiCredentials>() ?? new AllegroApiCredentials());
             var tokenRepository = new DbTokenRepository(dapperContext, allegroCredentials);
@@ -66,7 +67,7 @@ namespace AduosSyncServices.ServicesManager.Services
             GaskaApiAuthHelper.ApplyAuthHeaders(gaskaHttp, gaskaCredentials);
             var gaskaApiClient = new GaskaApiClient(gaskaHttp);
 
-            var syncService = new AllegroOrderSyncService(NullLogger<AllegroOrderSyncService>.Instance, orderRepository, allegroApiClient, gaskaApiClient);
+            var syncService = new AllegroOrderSyncService(NullLogger<AllegroOrderSyncService>.Instance, orderRepository, offerRepository, allegroApiClient, gaskaApiClient);
             var placementService = new GaskaOrderPlacementService(orderRepository, productRepository, gaskaApiClient, allegroApiClient, gaskaCredentials.ProductInterval);
             var allegroDeliveryNames = config.GetSection("AppSettings:AllegroDeliveryNames").Get<List<string>>() ?? new List<string>();
 

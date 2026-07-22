@@ -14,13 +14,19 @@ namespace AduosSyncServices.Infrastructure.Services
     {
         private readonly ILogger<AllegroOrderSyncService> _logger;
         private readonly IOrderRepository _orderRepo;
+        private readonly IOfferRepository _offerRepo;
         private readonly IAllegroApiClient _allegroApiClient;
         private readonly IGaskaApiClient _gaskaApiClient;
 
-        public AllegroOrderSyncService(ILogger<AllegroOrderSyncService> logger, IOrderRepository orderRepo, IAllegroApiClient allegroApiClient, IGaskaApiClient gaskaApiClient)
+        // How many orders within a page are saved to the DB concurrently. Each SaveAllegroOrder opens
+        // its own connection/transaction, so this just bounds how many run at once.
+        private const int OrderSaveParallelism = 5;
+
+        public AllegroOrderSyncService(ILogger<AllegroOrderSyncService> logger, IOrderRepository orderRepo, IOfferRepository offerRepo, IAllegroApiClient allegroApiClient, IGaskaApiClient gaskaApiClient)
         {
             _logger = logger;
             _orderRepo = orderRepo;
+            _offerRepo = offerRepo;
             _allegroApiClient = allegroApiClient;
             _gaskaApiClient = gaskaApiClient;
         }
@@ -29,7 +35,7 @@ namespace AduosSyncServices.Infrastructure.Services
         {
             const int limit = 100;
             int offset = 0, totalFetched = 0;
-            const string minBoughtFrom = "2026-07-17T00:00:00Z";
+            const string minBoughtFrom = "2026-07-11T00:00:00Z";
             var minBoughtDate = DateTime.Parse(minBoughtFrom, null, DateTimeStyles.AdjustToUniversal);
             var sevenDaysAgo = DateTime.UtcNow.AddDays(-4);
             var boughtDate = sevenDaysAgo < minBoughtDate ? minBoughtDate : sevenDaysAgo;
@@ -38,24 +44,27 @@ namespace AduosSyncServices.Infrastructure.Services
 
             try
             {
-                progress?.Report("Pobieranie stawek dostawy z Allegro...");
-                var shippingRates = await _allegroApiClient.GetShippingRates(ct);
                 var deliveryNames = (allegroDeliveryNames ?? new List<string>())
                     .Where(n => !string.IsNullOrWhiteSpace(n))
                     .Select(n => n.Trim())
                     .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-                var gaskaShippingRateIds = shippingRates.ShippingRates
-                    .Where(sr => deliveryNames.Contains(sr.Name))
-                    .Select(sr => sr.Id)
-                    .ToHashSet();
-
-                if (gaskaShippingRateIds.Count == 0)
+                if (deliveryNames.Count == 0)
                 {
-                    _logger.LogError("Failed to find Allegro Shipping Rate IDs for delivery methods '{DeliveryName}'. Aborting order sync.", deliveryNamesDisplay);
-                    progress?.Report($"Nie znaleziono stawek dostawy dla metod '{deliveryNamesDisplay}'. Przerwano synchronizację.");
+                    _logger.LogError("No Allegro delivery method names configured. Aborting order sync.");
+                    progress?.Report("Nie skonfigurowano nazw metod dostawy Allegro. Przerwano synchronizację.");
                     return;
                 }
+
+                // An offer's shipping method is already stored locally (AllegroOffers.DeliveryName),
+                // populated by the products/offers sync - read it from the DB instead of calling the
+                // Allegro API once per line item just to learn its shipping rate.
+                progress?.Report("Wczytywanie ofert z bazy...");
+                var offers = await _offerRepo.GetAllOffers(ct);
+                var deliveryNameByOfferId = offers
+                    .Where(o => !string.IsNullOrWhiteSpace(o.Id))
+                    .GroupBy(o => o.Id, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(g => g.Key, g => g.First().DeliveryName ?? string.Empty, StringComparer.OrdinalIgnoreCase);
 
                 while (true)
                 {
@@ -71,47 +80,26 @@ namespace AduosSyncServices.Infrastructure.Services
                     if (!orders.Any())
                         break;
 
-                    using (var semaphore = new SemaphoreSlim(5))
-                    {
-                        foreach (var order in orders)
+                    await Parallel.ForEachAsync(
+                        orders,
+                        new ParallelOptions { MaxDegreeOfParallelism = OrderSaveParallelism, CancellationToken = ct },
+                        async (order, _) =>
                         {
                             try
                             {
-                                var offerTasks = order.LineItems.Select(async item =>
-                                {
-                                    await semaphore.WaitAsync(ct);
-                                    try
-                                    {
-                                        return await _allegroApiClient.GetMinimalOfferInfo(item.Offer.Id, ct);
-                                    }
-                                    finally
-                                    {
-                                        semaphore.Release();
-                                    }
-                                }).ToList();
-
-                                var offers = await Task.WhenAll(offerTasks);
-
-                                var shippingRateNames = shippingRates.ShippingRates
-                                    .Where(sr => deliveryNames.Contains(sr.Name)) // optional: only keep your delivery names
-                                    .ToDictionary(sr => sr.Id, sr => sr.Name, StringComparer.OrdinalIgnoreCase);
-
-                                var offerShippingRates = offers.ToDictionary(
-                                    o => o.Id,
-                                    o => shippingRateNames.TryGetValue(o.Delivery.ShippingRates.Id, out var name) ? name : "Unknown"
-                                );
-
-                                // Check if all items use the Gąska shipping method
-                                bool allItemsUseGaska = offerShippingRates.Values.All(name => deliveryNames.Contains(name));
+                                // Every line item's offer must ship via one of our Gąska delivery
+                                // methods (looked up locally); if any item doesn't, skip the order.
+                                bool allItemsUseGaska = order.LineItems.All(item =>
+                                    deliveryNameByOfferId.TryGetValue(item.Offer.Id, out var deliveryName)
+                                    && deliveryNames.Contains(deliveryName));
 
                                 if (!allItemsUseGaska)
                                 {
-                                    _logger.LogInformation("Skipping order {OrderId} - not all items use {ShippingRate} shipping method.", order.Id, deliveryNamesDisplay);
-                                    continue;
+                                    _logger.LogInformation("Skipping order {OrderId} - not all items use a Gąska shipping method.", order.Id);
+                                    return;
                                 }
 
-                                // Save the order
-                                var model = MapAllegroOrderToModel(order, offerShippingRates);
+                                var model = MapAllegroOrderToModel(order, deliveryNameByOfferId);
                                 await _orderRepo.SaveAllegroOrder(model);
                                 _logger.LogInformation("Order {OrderId} synced from Allegro.", order.Id);
                             }
@@ -119,8 +107,7 @@ namespace AduosSyncServices.Infrastructure.Services
                             {
                                 _logger.LogError(ex, "Failed to sync order {OrderId} from Allegro.", order.Id);
                             }
-                        }
-                    }
+                        });
 
                     totalFetched += orders.Count();
                     _logger.LogInformation("Fetched {Count} orders from Allegro so far.", totalFetched);

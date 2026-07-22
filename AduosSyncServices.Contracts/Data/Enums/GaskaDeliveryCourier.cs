@@ -8,6 +8,9 @@ namespace AduosSyncServices.Contracts.Data.Enums
         Dpd,
         Gls,
         Fedex,
-        FedexDropshippingPobranie
+        FedexDropshippingPobranie,
+        Hellmann,
+        Schenker,
+        PersonalCollection
     }
 }

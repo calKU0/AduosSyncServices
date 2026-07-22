@@ -14,7 +14,7 @@ namespace AduosSyncServices.ServicesManager
 {
     public partial class MainWindow
     {
-        private static readonly TimeSpan OrdersAutoRefreshInterval = TimeSpan.FromMinutes(5);
+        private static readonly TimeSpan OrdersAutoRefreshInterval = TimeSpan.FromMinutes(2);
 
         private readonly OrdersManagementServiceFactory _ordersManagementServiceFactory = new();
         private OrdersManagementContext? _ordersContext;
@@ -30,6 +30,7 @@ namespace AduosSyncServices.ServicesManager
         private HashSet<bool> _sentToExternalFilter = new();
         private HashSet<AllegroPaymentType> _paymentTypeFilter = new();
         private HashSet<OrderSource> _sourceFilter = new();
+        private HashSet<bool> _dropshippingFilter = new();
 
         private async Task ShowOrdersViewAsync()
         {
@@ -66,6 +67,7 @@ namespace AduosSyncServices.ServicesManager
             CbSentToExternalFilter.SetItems(new (string, object)[] { ("Tak", true), ("Nie", false) });
             CbPaymentTypeFilter.SetItems(Enum.GetValues<AllegroPaymentType>().Select(s => (s.GetDescription(), (object)s)));
             CbSourceFilter.SetItems(Enum.GetValues<OrderSource>().Select(s => (s.GetDescription(), (object)s)));
+            CbDropshippingFilter.SetItems(new (string, object)[] { ("Tak", true), ("Nie", false) });
         }
 
         private void EnsureAutoRefreshTimerStarted()
@@ -199,6 +201,11 @@ namespace AduosSyncServices.ServicesManager
             if (_sourceFilter.Count > 0 && !_sourceFilter.Contains(row.Source))
                 return false;
 
+            // Dropshipping is nullable on the order; treat anything other than an explicit true as
+            // "not dropshipping" so the "Nie" option also catches the null (not-yet-placed) case.
+            if (_dropshippingFilter.Count > 0 && !_dropshippingFilter.Contains(row.IsDropshipping == true))
+                return false;
+
             return true;
         }
 
@@ -209,6 +216,7 @@ namespace AduosSyncServices.ServicesManager
             _sentToExternalFilter = CbSentToExternalFilter.SelectedValues.Cast<bool>().ToHashSet();
             _paymentTypeFilter = CbPaymentTypeFilter.SelectedValues.Cast<AllegroPaymentType>().ToHashSet();
             _sourceFilter = CbSourceFilter.SelectedValues.Cast<OrderSource>().ToHashSet();
+            _dropshippingFilter = CbDropshippingFilter.SelectedValues.Cast<bool>().ToHashSet();
             _ordersView?.Refresh();
         }
 
@@ -229,11 +237,91 @@ namespace AduosSyncServices.ServicesManager
             UpdatePlaceOrderButtonState();
         }
 
+        private void LvOrders_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            // Row highlight (not a checkbox) drives the single-order delete affordance.
+            UpdateDeleteButtonState();
+        }
+
         private void UpdatePlaceOrderButtonState()
         {
             var selectedCount = _orders.Count(o => o.IsSelected);
             BtnPlaceOrder.IsEnabled = selectedCount > 0;
             SelectedOrdersCountText.Text = $"Zaznaczono: {selectedCount}";
+            UpdateDeleteButtonState();
+        }
+
+        // Enabled when there's at least one deletable target: a checked deletable row, or - when
+        // nothing is checked - a highlighted deletable row.
+        private void UpdateDeleteButtonState()
+        {
+            BtnDeleteOrders.IsEnabled = GetDeletionTargets().Count > 0;
+        }
+
+        // Checked rows take priority; if none are checked, fall back to the single highlighted row.
+        // Either way only manual, not-yet-placed orders (CanDelete) are returned.
+        private List<OrderRowViewModel> GetDeletionTargets()
+        {
+            var checkedDeletable = _orders.Where(o => o.IsSelected && o.CanDelete).ToList();
+            if (checkedDeletable.Count > 0)
+                return checkedDeletable;
+
+            if (_orders.Any(o => o.IsSelected))
+                return new List<OrderRowViewModel>();
+
+            return LvOrders.SelectedItem is OrderRowViewModel { CanDelete: true } row
+                ? new List<OrderRowViewModel> { row }
+                : new List<OrderRowViewModel>();
+        }
+
+        private async void BtnDeleteOrders_Click(object sender, RoutedEventArgs e)
+        {
+            var targets = GetDeletionTargets();
+            if (targets.Count == 0)
+            {
+                _dialogService.ShowWarning("Zaznacz lub wybierz zamówienie ręczne, które nie zostało jeszcze złożone u dostawcy.");
+                return;
+            }
+
+            var confirmMessage = targets.Count == 1
+                ? $"Czy na pewno usunąć zamówienie ręczne {targets[0].AllegroId}? Tej operacji nie można cofnąć."
+                : $"Czy na pewno usunąć {targets.Count} zamówień ręcznych? Tej operacji nie można cofnąć.";
+
+            if (!_dialogService.Confirm(confirmMessage))
+                return;
+
+            try
+            {
+                BtnDeleteOrders.IsEnabled = false;
+
+                var context = GetOrdersContext();
+                var deleted = 0;
+                var failed = new List<string>();
+
+                foreach (var target in targets)
+                {
+                    if (await context.OrderRepository.DeleteManualOrder(target.Id))
+                        deleted++;
+                    else
+                        failed.Add(target.AllegroId);
+                }
+
+                if (failed.Count > 0)
+                {
+                    _dialogService.ShowWarning(
+                        $"Usunięto {deleted} z {targets.Count} zamówień. Nie udało się usunąć (mogły zostać złożone u dostawcy lub nie są ręczne): {string.Join(", ", failed)}.");
+                }
+
+                await LoadOrdersAsync();
+            }
+            catch (Exception ex)
+            {
+                _dialogService.ShowError($"Nie udało się usunąć zamówień: {ex.Message}");
+            }
+            finally
+            {
+                UpdateDeleteButtonState();
+            }
         }
 
         private async void BtnRefreshOrders_Click(object sender, RoutedEventArgs e)
