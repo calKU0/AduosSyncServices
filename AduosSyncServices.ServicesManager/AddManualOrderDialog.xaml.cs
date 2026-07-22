@@ -372,7 +372,7 @@ namespace AduosSyncServices.ServicesManager
             var options = Enum.GetValues<GaskaDeliveryCourier>()
                 .Where(c => !isHeadquarters || c.IsAvailableForHeadquarters())
                 .Where(c => c.RequiresCodAmount() == isCod)
-                .Select(c => new CourierOption(c.ToPolishDisplayName(), c))
+                .Select(c => new CourierOption(c.GetDescription(), c))
                 .ToList();
 
             CbCourier.ItemsSource = options;
@@ -443,7 +443,7 @@ namespace AduosSyncServices.ServicesManager
             var itemCount = _cart.Sum(c => c.Quantity);
             var productsTotal = _cart.Sum(c => c.LineTotal);
             var grandTotal = productsTotal + _deliveryCost;
-            var courierText = _selectedCourier.HasValue ? _selectedCourier.Value.ToPolishDisplayName() : "(nie wybrano)";
+            var courierText = _selectedCourier.HasValue ? _selectedCourier.Value.GetDescription() : "(nie wybrano)";
             var itemWord = PolishText.Count(itemCount, "pozycję", "pozycje", "pozycji");
 
             TxtOrderTotal.Text = grandTotal.ToString("N2", CultureInfo.GetCultureInfo("pl-PL")) + " zł";
@@ -537,13 +537,13 @@ namespace AduosSyncServices.ServicesManager
 
                 if (courier.RequiresCodAmount() && paymentType != AllegroPaymentType.CASH_ON_DELIVERY)
                 {
-                    _dialogService.ShowWarning($"Metoda dostawy \"{courier.ToPolishDisplayName()}\" wymaga płatności za pobraniem.");
+                    _dialogService.ShowWarning($"Metoda dostawy \"{courier.GetDescription()}\" wymaga płatności za pobraniem.");
                     return;
                 }
 
                 if (!courier.RequiresCodAmount() && paymentType == AllegroPaymentType.CASH_ON_DELIVERY)
                 {
-                    _dialogService.ShowWarning($"Płatność za pobraniem wymaga kuriera \"{GaskaDeliveryCourier.FedexDropshippingPobranie.ToPolishDisplayName()}\".");
+                    _dialogService.ShowWarning($"Płatność za pobraniem wymaga kuriera \"{GaskaDeliveryCourier.FedexDropshippingPobranie.GetDescription()}\".");
                     return;
                 }
 
@@ -560,8 +560,8 @@ namespace AduosSyncServices.ServicesManager
             var cartTotal = _cart.Sum(c => c.LineTotal);
             var orderTotal = cartTotal + _deliveryCost;
             var confirmMessage = isHeadquarters
-                ? $"Utworzyć i złożyć zamówienie u dostawcy na adres siedziby ({_cart.Count} {PolishText.Count(_cart.Count, "pozycja", "pozycje", "pozycji")}, {orderTotal:N2} zł z dostawą), kurier: {courier.ToPolishDisplayName()}?"
-                : $"Utworzyć i złożyć zamówienie u dostawcy na adres klienta ({firstName} {lastName}, {orderTotal:N2} zł z dostawą), kurier: {courier.ToPolishDisplayName()}?";
+                ? $"Utworzyć i złożyć zamówienie u dostawcy na adres siedziby ({_cart.Count} {PolishText.Count(_cart.Count, "pozycja", "pozycje", "pozycji")}, {orderTotal:N2} zł z dostawą), kurier: {courier.GetDescription()}?"
+                : $"Utworzyć i złożyć zamówienie u dostawcy na adres klienta ({firstName} {lastName}, {orderTotal:N2} zł z dostawą), kurier: {courier.GetDescription()}?";
 
             if (!_dialogService.Confirm(confirmMessage))
                 return;
@@ -589,7 +589,7 @@ namespace AduosSyncServices.ServicesManager
                     RecipientEmail = email,
                     RecipientPhoneNumber = phone,
                     DeliveryMethodId = courier.ToString(),
-                    DeliveryMethodName = courier.ToPolishDisplayName(),
+                    DeliveryMethodName = courier.GetDescription(),
                     CreatedAt = DateTime.UtcNow,
                     Revision = "0",
                     SentToExternalCompany = false,

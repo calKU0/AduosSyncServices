@@ -146,7 +146,7 @@ namespace AduosSyncServices.Infrastructure.Services
             var request = new GaskaCreateOrderRequest
             {
                 DeliveryAddressId = defaultAddress.Id,
-                DeliveryMethod = courier.ToGaskaDeliveryMethod(),
+                DeliveryMethod = courier.GetDescription(),
                 CustomerNumber = orders.First().AllegroId,
                 Items = aggregatedQtyByIntegrationId
                     .Select(kvp => new GaskaCreateOrderItemRequest { Id = kvp.Key, Qty = kvp.Value.ToString(CultureInfo.InvariantCulture) })
@@ -243,7 +243,7 @@ namespace AduosSyncServices.Infrastructure.Services
                 {
                     var offending = string.Join(", ", nonCodOrders.Select(o => o.AllegroId));
                     foreach (var order in orders)
-                        result.Results.Add(new CustomerOrderPlacementResult { AllegroOrderId = order.Id, IsSuccessful = false, ErrorMessage = $"Metoda \"{courier.ToPolishDisplayName()}\" wymaga, aby wszystkie zamówienia były na pobranie. Zamówienia bez pobrania: {offending}." });
+                        result.Results.Add(new CustomerOrderPlacementResult { AllegroOrderId = order.Id, IsSuccessful = false, ErrorMessage = $"Metoda \"{courier.GetDescription()}\" wymaga, aby wszystkie zamówienia były na pobranie. Zamówienia bez pobrania: {offending}." });
                     return result;
                 }
             }
@@ -254,7 +254,7 @@ namespace AduosSyncServices.Infrastructure.Services
                 {
                     var offending = string.Join(", ", codOrders.Select(o => o.AllegroId));
                     foreach (var order in orders)
-                        result.Results.Add(new CustomerOrderPlacementResult { AllegroOrderId = order.Id, IsSuccessful = false, ErrorMessage = $"Zamówienia na pobranie muszą być wysyłane metodą \"{GaskaDeliveryCourier.FedexDropshippingPobranie.ToPolishDisplayName()}\". Zamówienia na pobranie: {offending}." });
+                        result.Results.Add(new CustomerOrderPlacementResult { AllegroOrderId = order.Id, IsSuccessful = false, ErrorMessage = $"Zamówienia na pobranie muszą być wysyłane metodą \"{GaskaDeliveryCourier.FedexDropshippingPobranie.GetDescription()}\". Zamówienia na pobranie: {offending}." });
                     return result;
                 }
             }
@@ -323,7 +323,7 @@ namespace AduosSyncServices.Infrastructure.Services
                     var orderRequest = new GaskaCreateOrderRequest
                     {
                         DeliveryAddressId = address.AddressId,
-                        DeliveryMethod = courier.ToGaskaDeliveryMethod(),
+                        DeliveryMethod = courier.GetDescription(),
                         DropshippingAmount = dropshippingAmount,
                         CustomerNumber = order.AllegroId,
                         Items = qtyByIntegrationId

@@ -115,7 +115,7 @@ namespace AduosSyncServices.ServicesManager
 
             var options = Enum.GetValues<GaskaDeliveryCourier>()
                 .Where(c => !isHeadquarters || c.IsAvailableForHeadquarters())
-                .Select(c => new CourierOption(c.ToPolishDisplayName(), c))
+                .Select(c => new CourierOption(c.GetDescription(), c))
                 .ToList();
 
             CbCourier.ItemsSource = options;
@@ -148,7 +148,7 @@ namespace AduosSyncServices.ServicesManager
         private void UpdateSummary()
         {
             var itemCount = _orders.Sum(o => o.Items.Count);
-            var courierText = _selectedCourier.HasValue ? _selectedCourier.Value.ToPolishDisplayName() : "(nie wybrano)";
+            var courierText = _selectedCourier.HasValue ? _selectedCourier.Value.GetDescription() : "(nie wybrano)";
             var orderWord = PolishText.Count(_orders.Count, "zamówienie", "zamówienia", "zamówień");
             var itemWord = PolishText.Count(itemCount, "pozycję", "pozycje", "pozycji");
             SummaryText.Text = $"Wybrano {_orders.Count} {orderWord}, {itemCount} {itemWord}. Metoda dostawy: {courierText}.";
@@ -188,8 +188,8 @@ namespace AduosSyncServices.ServicesManager
             }
 
             var confirmMessage = isHeadquarters
-                ? $"Złożyć jedno zamówienie u dostawcy na adres siedziby dla {_orders.Count} {PolishText.Count(_orders.Count, "zamówienia", "zamówień", "zamówień")}, kurier: {courier.ToPolishDisplayName()}?"
-                : $"Złożyć {_orders.Count} {PolishText.Count(_orders.Count, "osobne zamówienie", "osobne zamówienia", "osobnych zamówień")} u dostawcy na adresy klientów, kurier: {courier.ToPolishDisplayName()}?";
+                ? $"Złożyć jedno zamówienie u dostawcy na adres siedziby dla {_orders.Count} {PolishText.Count(_orders.Count, "zamówienia", "zamówień", "zamówień")}, kurier: {courier.GetDescription()}?"
+                : $"Złożyć {_orders.Count} {PolishText.Count(_orders.Count, "osobne zamówienie", "osobne zamówienia", "osobnych zamówień")} u dostawcy na adresy klientów, kurier: {courier.GetDescription()}?";
 
             if (!_dialogService.Confirm(confirmMessage))
                 return;

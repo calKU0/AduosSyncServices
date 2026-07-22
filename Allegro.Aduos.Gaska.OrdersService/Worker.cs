@@ -68,7 +68,6 @@ namespace Allegro.Aduos.Gaska.OrdersService
                     _logger.LogInformation("{StepName} completed in {Duration}.", stepName, FormatDuration(sw.Elapsed));
                 }
 
-                await MeasureStepAsync("Sync orders from Allegro", () => orderService.SyncOrdersFromAllegro(_appSettings.AllegroDeliveryNames));
                 await MeasureStepAsync("Update Gaska order info", () => orderService.UpdateOrderGaskaInfo());
                 await MeasureStepAsync("Update orders in Allegro", () => orderService.UpdateOrdersInAllegro());
 
