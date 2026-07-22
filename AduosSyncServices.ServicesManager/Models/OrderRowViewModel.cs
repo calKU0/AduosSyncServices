@@ -110,6 +110,18 @@ namespace AduosSyncServices.ServicesManager.Models
             }
         }
 
+        // Sets the resolved name/colour and, since InternalStatusId/HasInternalStatus read straight
+        // from the (non-observable) Order model, raises their change notifications too - call after the
+        // caller has updated Order.InternalStatusId so bindings (e.g. the pill's visibility) refresh
+        // immediately without a full grid reload.
+        public void RefreshInternalStatus(string? name, string? color)
+        {
+            OnPropertyChanged(nameof(InternalStatusId));
+            OnPropertyChanged(nameof(HasInternalStatus));
+            InternalStatusName = name;
+            InternalStatusColor = color;
+        }
+
         public string TrackingNumbers
         {
             get

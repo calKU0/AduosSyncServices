@@ -93,6 +93,12 @@ namespace AduosSyncServices.ServicesManager
                 var items = new List<(string, object)> { ("Bez statusu", NoInternalStatusKey) };
                 items.AddRange(_internalStatuses.Select(s => (s.Name, (object)s.Id)));
                 CbInternalStatusFilter.SetItems(items);
+
+                // SetItems clears the control's checked items without raising SelectionChanged, so keep
+                // the backing filter set in sync - otherwise a previously selected (possibly since
+                // deleted) status would keep hiding rows while the control shows "Wszystkie".
+                _internalStatusFilter = new HashSet<int>();
+                _ordersView?.Refresh();
             }
             catch (Exception ex)
             {
@@ -101,18 +107,16 @@ namespace AduosSyncServices.ServicesManager
         }
 
         // Fills in each row's status name/colour from the loaded status list (the order itself only
-        // stores the id).
+        // stores the id) and refreshes the id/HasInternalStatus notifications.
         private void ApplyInternalStatusToRow(OrderRowViewModel row)
         {
             if (row.InternalStatusId is { } id && _internalStatusById.TryGetValue(id, out var status))
             {
-                row.InternalStatusName = status.Name;
-                row.InternalStatusColor = status.Color;
+                row.RefreshInternalStatus(status.Name, status.Color);
             }
             else
             {
-                row.InternalStatusName = null;
-                row.InternalStatusColor = null;
+                row.RefreshInternalStatus(null, null);
             }
         }
 
