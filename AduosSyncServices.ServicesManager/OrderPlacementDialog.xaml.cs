@@ -206,12 +206,38 @@ namespace AduosSyncServices.ServicesManager
             {
                 var itemProgress = StockCheckItemViewModel.CreateCollectionProgress(_stockCheckItems);
                 var stockCheck = await _placementService.CheckStockAsync(_orders, itemProgress);
+
+                // Shortages no longer sink the whole batch: only the orders that don't fit in stock
+                // are skipped (not sent to Gąska, Allegro status untouched); the rest is placed after
+                // an explicit confirmation.
+                var ordersToPlace = _orders;
+                var skippedOrders = new List<AllegroOrder>();
                 if (!stockCheck.IsSuccessful)
                 {
-                    var shortageDetails = string.Join("\n", stockCheck.Shortages.Select(s =>
-                        $"{s.ProductName} ({s.ProductCode}): potrzeba {s.RequestedQty}, dostępne {s.AvailableQty}"));
-                    _dialogService.ShowWarning($"Niewystarczający stan magazynowy w Gąsce:\n{shortageDetails}", "Brak dostępności");
-                    return;
+                    skippedOrders = _orders.Where(o => stockCheck.ShortagesByOrderId.ContainsKey(o.Id)).ToList();
+                    var feasible = _orders.Where(o => !stockCheck.ShortagesByOrderId.ContainsKey(o.Id)).ToList();
+
+                    if (feasible.Count == 0)
+                    {
+                        var shortageDetails = string.Join("\n", stockCheck.Shortages.Select(s =>
+                            $"{s.ProductName} ({s.ProductCode}): potrzeba {s.RequestedQty}, dostępne {s.AvailableQty}"));
+                        _dialogService.ShowWarning($"Niewystarczający stan magazynowy w Gąsce:\n{shortageDetails}", "Brak dostępności");
+                        return;
+                    }
+
+                    var skippedDetails = string.Join("\n", skippedOrders.Select(o =>
+                        $"• {o.AllegroId}: " + string.Join("; ", stockCheck.ShortagesByOrderId[o.Id].Select(s =>
+                            $"{s.ProductName} ({s.ProductCode}) - potrzeba {s.RequestedQty}, dostępne {s.AvailableQty}"))));
+
+                    if (!_dialogService.Confirm(
+                        $"Braki magazynowe w Gąsce blokują {skippedOrders.Count} z {_orders.Count} zamówień:\n{skippedDetails}\n\n" +
+                        $"Zamówienia z brakami zostaną pominięte (nie zostaną złożone ani oznaczone jako realizowane). Złożyć pozostałe: {feasible.Count}?",
+                        "Częściowe braki magazynowe"))
+                    {
+                        return;
+                    }
+
+                    ordersToPlace = feasible;
                 }
 
                 StockCheckPanel.Visibility = Visibility.Collapsed;
@@ -222,7 +248,8 @@ namespace AduosSyncServices.ServicesManager
                     // skipStockCheck: the CheckStockAsync above already validated every product (and
                     // drove the visible checklist) - re-checking inside the service would repeat all
                     // the rate-limited Gąska product calls.
-                    var result = await _placementService.PlaceHeadquartersOrderAsync(_orders, courier, skipStockCheck: true, statusProgress);
+                    var result = await _placementService.PlaceHeadquartersOrderAsync(ordersToPlace, courier, skipStockCheck: true, statusProgress);
+                    result.Warnings.InsertRange(0, skippedOrders.Select(o => $"Pominięto zamówienie {o.AllegroId} z powodu braków magazynowych."));
 
                     if (result.IsSuccessful)
                     {
@@ -250,7 +277,11 @@ namespace AduosSyncServices.ServicesManager
                 else
                 {
                     var codAmounts = _codRows.ToDictionary(r => r.AllegroOrderId, r => r.Amount);
-                    var result = await _placementService.PlaceCustomerOrdersAsync(_orders, courier, codAmounts, skipStockCheck: true, statusProgress);
+                    var result = await _placementService.PlaceCustomerOrdersAsync(ordersToPlace, courier, codAmounts, skipStockCheck: true, statusProgress);
+
+                    // Surface the stock-skipped orders in the same summary as real failures.
+                    foreach (var skipped in skippedOrders)
+                        result.Results.Add(new CustomerOrderPlacementResult { AllegroOrderId = skipped.Id, IsSuccessful = false, ErrorMessage = "Pominięto z powodu braków magazynowych w Gąsce." });
 
                     var succeeded = result.Results.Where(r => r.IsSuccessful).ToList();
                     var failed = result.Results.Where(r => !r.IsSuccessful).ToList();
