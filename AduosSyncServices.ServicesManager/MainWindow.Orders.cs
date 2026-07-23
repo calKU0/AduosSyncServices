@@ -1,6 +1,7 @@
 using AduosSyncServices.Contracts.Data.Enums;
 using AduosSyncServices.Contracts.Extensions;
 using AduosSyncServices.Contracts.Models;
+using AduosSyncServices.Infrastructure.Helpers;
 using AduosSyncServices.ServicesManager.Models;
 using AduosSyncServices.ServicesManager.Services;
 using System.Collections.ObjectModel;
@@ -153,6 +154,10 @@ namespace AduosSyncServices.ServicesManager
 
                 var context = GetOrdersContext();
                 var previousSelection = _orders.Where(o => o.IsSelected).Select(o => o.Id).ToHashSet();
+                // Rows are expanded by default (first load and newly arrived orders alike), so track
+                // what the user explicitly COLLAPSED and keep only that closed across refreshes
+                // (incl. the 2-minute auto-refresh).
+                var previousCollapsed = _orders.Where(o => !o.IsExpanded).Select(o => o.Id).ToHashSet();
                 var orders = await context.OrderRepository.GetAllOrdersForExternalCompany();
 
                 foreach (var row in _orders)
@@ -164,6 +169,7 @@ namespace AduosSyncServices.ServicesManager
                           {
                               var row = new OrderRowViewModel(o);
                               row.IsSelected = previousSelection.Contains(o.Id);
+                              row.IsExpanded = !previousCollapsed.Contains(o.Id);
                               ApplyInternalStatusToRow(row);
                               return row;
                           }));
@@ -176,6 +182,10 @@ namespace AduosSyncServices.ServicesManager
                 LvOrders.ItemsSource = _ordersView;
 
                 UpdatePlaceOrderButtonState();
+                UpdateExpandAllButtonLabel();
+
+                // Fill in the item sub-lists (image, delivery type) after the grid is already showing.
+                await BuildOrderItemRowsAsync(context);
             }
             catch (Exception ex)
             {
@@ -187,6 +197,56 @@ namespace AduosSyncServices.ServicesManager
                     LvOrders.IsEnabled = true;
 
                 _isOrdersOperationInProgress = false;
+            }
+        }
+
+        // Builds the display rows for every order's items sub-list: product delivery types come from a
+        // single batched Products lookup, and each thumbnail is the product's first image file from the
+        // products-service image folder (no per-row DB round trips).
+        private async Task BuildOrderItemRowsAsync(OrdersManagementContext context)
+        {
+            var allItems = _orders.SelectMany(r => r.Order.Items).ToList();
+            if (allItems.Count == 0)
+                return;
+
+            var productsById = new Dictionary<int, Product>();
+            var imagePathByProductId = new Dictionary<int, string?>();
+
+            try
+            {
+                var productIds = allItems.Select(i => i.ProductId).Distinct().ToList();
+                var products = await context.ProductRepository.GetProductsByIdsAsync(productIds, CancellationToken.None);
+                productsById = products.ToDictionary(p => p.Id);
+
+                // Disk scan off the UI thread - one folder probe per distinct product.
+                imagePathByProductId = await Task.Run(() => productIds.ToDictionary(
+                    id => id,
+                    id => ImageHelper.GetFirstImageFile(ImageHelper.DefaultImagesFolder, id)));
+            }
+            catch
+            {
+                // Best-effort enrichment: on failure the sub-lists still show code/name/price from the
+                // order items themselves, just without images and delivery types.
+            }
+
+            foreach (var row in _orders)
+            {
+                row.ItemRows = row.Order.Items.Select(item =>
+                {
+                    productsById.TryGetValue(item.ProductId, out var product);
+                    imagePathByProductId.TryGetValue(item.ProductId, out var imagePath);
+
+                    return new OrderItemRowViewModel
+                    {
+                        ImageUrl = imagePath,
+                        Code = product?.Code ?? item.ExternalId,
+                        Name = item.OfferName,
+                        QuantityDisplay = item.Quantity.ToString(),
+                        Unit = product?.Unit ?? "-",
+                        DeliveryTypeDisplay = OrderItemRowViewModel.FormatDeliveryType(product?.DeliveryType),
+                        PriceDisplay = OrderItemRowViewModel.FormatPrice(item.PriceGross)
+                    };
+                }).ToList();
             }
         }
 
@@ -278,7 +338,33 @@ namespace AduosSyncServices.ServicesManager
         private void OrderRow_PropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName == nameof(OrderRowViewModel.IsSelected))
+            {
                 UpdatePlaceOrderButtonState();
+            }
+            else if (e.PropertyName == nameof(OrderRowViewModel.IsExpanded))
+            {
+                if (sender is OrderRowViewModel row)
+                    SyncRowDetailsVisibility(row);
+
+                UpdateExpandAllButtonLabel();
+            }
+        }
+
+        // DetailsVisibility must be set as a LOCAL value on the realised DataGridRow container - the
+        // grid's explicit RowDetailsVisibilityMode outranks any RowStyle binding, so styles can't
+        // drive it. Virtualised (not yet realised) rows are covered by LvOrders_LoadingRow instead.
+        private void SyncRowDetailsVisibility(OrderRowViewModel row)
+        {
+            if (LvOrders.ItemContainerGenerator.ContainerFromItem(row) is DataGridRow container)
+                container.DetailsVisibility = row.IsExpanded ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void LvOrders_LoadingRow(object? sender, DataGridRowEventArgs e)
+        {
+            // Runs for newly realised AND recycled containers, so scrolled-back-into-view rows always
+            // reflect their view-model's expansion state.
+            if (e.Row.Item is OrderRowViewModel row)
+                e.Row.DetailsVisibility = row.IsExpanded ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private void OrderCheckBox_Click(object sender, RoutedEventArgs e)
@@ -290,6 +376,32 @@ namespace AduosSyncServices.ServicesManager
                 row.IsSelected = checkBox.IsChecked == true;
 
             UpdatePlaceOrderButtonState();
+        }
+
+        private void OrderExpander_Click(object sender, RoutedEventArgs e)
+        {
+            // Same TwoWay-binding workaround as the selection checkbox: push the toggle state to the
+            // row explicitly.
+            if (sender is System.Windows.Controls.Primitives.ToggleButton { DataContext: OrderRowViewModel row } toggle)
+                row.IsExpanded = toggle.IsChecked == true;
+
+            UpdateExpandAllButtonLabel();
+        }
+
+        private void BtnToggleExpandAll_Click(object sender, RoutedEventArgs e)
+        {
+            // Expand everything unless every order is already expanded - then collapse everything.
+            var expandAll = _orders.Any(o => !o.IsExpanded);
+            foreach (var row in _orders)
+                row.IsExpanded = expandAll;
+
+            UpdateExpandAllButtonLabel();
+        }
+
+        private void UpdateExpandAllButtonLabel()
+        {
+            var allExpanded = _orders.Count > 0 && _orders.All(o => o.IsExpanded);
+            BtnToggleExpandAll.Content = allExpanded ? "Zwiń wszystkie" : "Rozwiń wszystkie";
         }
 
         private void LvOrders_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -460,7 +572,7 @@ namespace AduosSyncServices.ServicesManager
         private void BtnAddOrder_Click(object sender, RoutedEventArgs e)
         {
             var context = GetOrdersContext();
-            var dialog = new AddManualOrderDialog(context.OrderRepository, context.ProductRepository, context.PlacementService, context.Account, context.IntegrationCompany) { Owner = this };
+            var dialog = new AddManualOrderDialog(context.OrderRepository, context.ProductRepository, context.PlacementService, context.MarginRanges, context.Account, context.IntegrationCompany) { Owner = this };
             var result = dialog.ShowDialog();
 
             if (result == true)
@@ -469,20 +581,21 @@ namespace AduosSyncServices.ServicesManager
 
         private void LvOrders_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
-            // Two fast clicks on the selection checkbox shouldn't ALSO open the details dialog on top
-            // of toggling it - ignore double-clicks that originate inside a CheckBox.
-            if (e.OriginalSource is DependencyObject source && HasCheckBoxAncestor(source))
+            // Two fast clicks on the selection checkbox or the items expander shouldn't ALSO open the
+            // details dialog on top of toggling them - ignore double-clicks originating inside either
+            // (CheckBox derives from ToggleButton, so one check covers both).
+            if (e.OriginalSource is DependencyObject source && HasToggleAncestor(source))
                 return;
 
             if (LvOrders.SelectedItem is OrderRowViewModel row)
                 OpenOrderDetails(row);
         }
 
-        private static bool HasCheckBoxAncestor(DependencyObject element)
+        private static bool HasToggleAncestor(DependencyObject element)
         {
             while (element != null)
             {
-                if (element is CheckBox)
+                if (element is System.Windows.Controls.Primitives.ToggleButton)
                     return true;
 
                 if (element is System.Windows.Controls.Primitives.DataGridRowsPresenter or DataGrid)

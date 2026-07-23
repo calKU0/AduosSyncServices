@@ -25,6 +25,9 @@ namespace AduosSyncServices.ServicesManager.Services
         public required IAllegroOrderSyncService SyncService { get; init; }
         public required IGaskaOrderPlacementService PlacementService { get; init; }
         public required List<string> AllegroDeliveryNames { get; init; }
+        // Margin ranges read from the products service's appsettings (PriceSettings:MarginRanges),
+        // used to compute a manual order's sale price (net price x margin).
+        public required List<MarginRange> MarginRanges { get; init; }
         public required AllegroAccount Account { get; init; }
         public required IntegrationCompany IntegrationCompany { get; init; }
     }
@@ -81,9 +84,45 @@ namespace AduosSyncServices.ServicesManager.Services
                 SyncService = syncService,
                 PlacementService = placementService,
                 AllegroDeliveryNames = allegroDeliveryNames,
+                MarginRanges = LoadProductsServiceMarginRanges(service),
                 Account = repoSettings.Value.Account,
                 IntegrationCompany = repoSettings.Value.Company
             };
+        }
+
+        // The margin configuration lives in the PRODUCTS service's appsettings, not the orders
+        // service's - locate a sibling catalog entry for the same account whose config actually has
+        // PriceSettings:MarginRanges and read the ranges from there. Best-effort: an empty list just
+        // means the manual-order sale price falls back to the plain net price.
+        private List<MarginRange> LoadProductsServiceMarginRanges(ServiceItem ordersService)
+        {
+            try
+            {
+                var services = new ServiceCatalogService().LoadServices();
+                foreach (var candidate in services)
+                {
+                    if (candidate.Id == ordersService.Id
+                        || candidate.Account != ordersService.Account
+                        || string.IsNullOrWhiteSpace(candidate.ExternalConfigPath)
+                        || !System.IO.File.Exists(candidate.ExternalConfigPath))
+                    {
+                        continue;
+                    }
+
+                    var config = _configService.LoadAppSettings(candidate.ExternalConfigPath);
+                    var section = config.GetSection("PriceSettings:MarginRanges");
+                    if (!section.Exists())
+                        continue;
+
+                    return section.Get<List<MarginRange>>() ?? new List<MarginRange>();
+                }
+            }
+            catch
+            {
+                // Fall through to the empty list.
+            }
+
+            return new List<MarginRange>();
         }
 
         private static RetryHttpMessageHandler NewRetryHandler() =>

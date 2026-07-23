@@ -53,7 +53,7 @@
         <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="16">
             <StackPanel>
                 <TextBlock Text="Wyszukaj produkt" FontWeight="SemiBold" Margin="0,0,0,6" />
-                <TextBlock Text="Widoczne są tylko produkty podpięte na Allegro z aktywną ofertą. Wpisz min. 3 znaki, wybierz produkt z listy, aby dodać go do koszyka." Foreground="#6B7280" FontSize="12" Margin="0,0,0,6" />
+                <TextBlock Text="Wyszukiwanie działa na bazie produktów (produkt nie musi mieć oferty na Allegro). Wpisz min. 3 znaki i wybierz produkt z listy, aby dodać go do koszyka." Foreground="#6B7280" FontSize="12" Margin="0,0,0,6" />
                 <Grid Margin="0,0,0,20" HorizontalAlignment="Left">
                     <TextBox x:Name="TxtSearch" Width="420" Padding="8,6" BorderBrush="#D1D5DB"
                              TextChanged="TxtSearch_TextChanged" PreviewKeyDown="TxtSearch_PreviewKeyDown" />
@@ -65,12 +65,15 @@
                             <Border.Effect>
                                 <DropShadowEffect Color="Black" BlurRadius="16" ShadowDepth="4" Opacity="0.15" />
                             </Border.Effect>
-                            <StackPanel>
+                            <!-- IsSharedSizeScope keeps the auto-sized Kod column aligned between the header
+                                 grid and every result row (Kod must never be truncated - only Produkt trims). -->
+                            <StackPanel Grid.IsSharedSizeScope="True">
                                 <Grid Margin="8,2,8,4">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="120" />
-                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" SharedSizeGroup="SearchCode" />
+                                        <!-- MinWidth keeps the name readable even if an unusually long code inflates the Kod column. -->
+                                        <ColumnDefinition Width="*" MinWidth="120" />
                                         <ColumnDefinition Width="60" />
                                         <ColumnDefinition Width="75" />
                                         <ColumnDefinition Width="85" />
@@ -85,7 +88,7 @@
                                     <TextBlock Grid.Column="2" Text="Produkt" Style="{StaticResource SearchColumnHeaderStyle}" Margin="8,0" />
                                     <TextBlock Grid.Column="3" Text="Stan" Style="{StaticResource SearchColumnHeaderStyle}" ToolTip="Stan magazynowy" />
                                     <TextBlock Grid.Column="4" Text="Opak." Style="{StaticResource SearchColumnHeaderStyle}" ToolTip="Wielokrotność opakowania" />
-                                    <TextBlock Grid.Column="5" Text="Zakup" Style="{StaticResource SearchColumnHeaderStyle}" ToolTip="Cena zakupu" />
+                                    <TextBlock Grid.Column="5" Text="Zakup netto" Style="{StaticResource SearchColumnHeaderStyle}" ToolTip="Cena zakupu netto" />
                                     <TextBlock Grid.Column="6" Text="Sprzedaż" Style="{StaticResource SearchColumnHeaderStyle}" ToolTip="Cena sprzedaży" />
                                 </Grid>
                                 <TextBlock x:Name="NoResultsText" Text="Brak wyników." Foreground="#6B7280" Padding="10" Visibility="Collapsed" />
@@ -108,19 +111,19 @@
                                                         <Grid>
                                                             <Grid.ColumnDefinitions>
                                                                 <ColumnDefinition Width="Auto" />
-                                                                <ColumnDefinition Width="120" />
-                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" SharedSizeGroup="SearchCode" />
+                                                                <ColumnDefinition Width="*" MinWidth="120" />
                                                                 <ColumnDefinition Width="60" />
                                                                 <ColumnDefinition Width="75" />
                                                                 <ColumnDefinition Width="85" />
                                                                 <ColumnDefinition Width="85" />
                                                             </Grid.ColumnDefinitions>
-                                                            <Image Grid.Column="0" Source="{Binding ImageUrl}" Width="36" Height="36" Stretch="Uniform" Margin="0,0,10,0" />
-                                                            <TextBlock Grid.Column="1" Text="{Binding Code}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" FontWeight="SemiBold" />
+                                                            <Image Grid.Column="0" Source="{Binding ImageUrl, Converter={StaticResource PathToImage}}" Width="36" Height="36" Stretch="Uniform" Margin="0,0,10,0" />
+                                                            <TextBlock Grid.Column="1" Text="{Binding Code}" VerticalAlignment="Center" FontWeight="SemiBold" />
                                                             <TextBlock Grid.Column="2" Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="8,0" />
                                                             <TextBlock Grid.Column="3" Text="{Binding InStock, StringFormat={}{0:0.##}}" VerticalAlignment="Center" Foreground="#374151" ToolTip="Stan magazynowy" />
                                                             <TextBlock Grid.Column="4" Text="{Binding PackQty, StringFormat={}{0:0.##}}" VerticalAlignment="Center" Foreground="#374151" ToolTip="Wielokrotność opakowania" />
-                                                            <TextBlock Grid.Column="5" Text="{Binding PurchasePriceGross, StringFormat={}{0:N2} zł}" VerticalAlignment="Center" Foreground="#374151" ToolTip="Cena zakupu" />
+                                                            <TextBlock Grid.Column="5" Text="{Binding PurchasePriceNet, StringFormat={}{0:N2} zł}" VerticalAlignment="Center" Foreground="#374151" ToolTip="Cena zakupu netto" />
                                                             <TextBlock Grid.Column="6" Text="{Binding SalePrice, StringFormat={}{0:N2} zł}" VerticalAlignment="Center" Foreground="#15803D" FontWeight="SemiBold" ToolTip="Cena sprzedaży" />
                                                         </Grid>
                                                     </Border>
@@ -137,7 +140,11 @@
 
                 <TextBlock Text="Koszyk" FontWeight="SemiBold" Margin="0,0,0,6" />
                 <Border BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Padding="4" Margin="0,0,0,16" Background="White">
-                    <DataGrid x:Name="DgCart" AutoGenerateColumns="False" IsReadOnly="False" MaxHeight="220" RowHeight="36"
+                    <!-- Row virtualization is OFF on purpose: auto-sized columns (Kod) only measure
+                         realised rows, so a long code in a virtualized row would stay clipped forever.
+                         CanContentScroll=False additionally gives smooth per-pixel scrolling. -->
+                    <DataGrid x:Name="DgCart" AutoGenerateColumns="False" IsReadOnly="False" MaxHeight="240" RowHeight="46"
+                              EnableRowVirtualization="False" ScrollViewer.CanContentScroll="False"
                               HeadersVisibility="Column" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#E5E7EB"
                               HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
                               BorderThickness="0" RowHeaderWidth="0" CanUserAddRows="False" CanUserResizeColumns="False">
@@ -147,9 +154,8 @@
                                 <Setter Property="HorizontalAlignment" Value="Stretch" />
                                 <Setter Property="VerticalAlignment" Value="Stretch" />
                             </Style>
-                            <Style x:Key="CartCellTextStyle" TargetType="TextBlock">
-                                <Setter Property="VerticalAlignment" Value="Center" />
-                            </Style>
+                            <!-- Read-only TextBox (selectable/copyable) - bindings must be Mode=OneWay. -->
+                            <Style x:Key="CartCellTextStyle" TargetType="TextBox" BasedOn="{StaticResource SelectableTextStyle}" />
                         </DataGrid.Resources>
                         <DataGrid.CellStyle>
                             <Style TargetType="DataGridCell" BasedOn="{StaticResource ZeroPaddingDataGridCellStyle}" />
@@ -158,11 +164,20 @@
                             <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource DialogGridHeaderStyle}" />
                         </DataGrid.ColumnHeaderStyle>
                         <DataGrid.Columns>
-                            <DataGridTemplateColumn Header="Kod" Width="100">
+                            <DataGridTemplateColumn Header="Zdjęcie" Width="Auto">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Border Style="{StaticResource CartCellBorderStyle}">
-                                            <TextBlock Text="{Binding Code}" Style="{StaticResource CartCellTextStyle}" TextTrimming="CharacterEllipsis" />
+                                            <Image Source="{Binding ImageUrl, Converter={StaticResource PathToImage}}" Width="28" Height="28" Stretch="Uniform" HorizontalAlignment="Left" VerticalAlignment="Center" />
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Kod" Width="Auto">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource CartCellBorderStyle}">
+                                            <TextBox Text="{Binding Code, Mode=OneWay}" Style="{StaticResource CartCellTextStyle}" />
                                         </Border>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
@@ -171,7 +186,9 @@
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Border Style="{StaticResource CartCellBorderStyle}">
-                                            <TextBlock Text="{Binding Name}" Style="{StaticResource CartCellTextStyle}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" />
+                                            <!-- Nazwa is the only column allowed to truncate (ellipsis + full name in tooltip);
+                                                 TextBox cannot render ellipsis, hence a TextBlock here. -->
+                                            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip="{Binding Name}" />
                                         </Border>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
@@ -180,7 +197,17 @@
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Border Style="{StaticResource CartCellBorderStyle}">
-                                            <TextBlock Text="{Binding Unit}" Style="{StaticResource CartCellTextStyle}" />
+                                            <TextBox Text="{Binding Unit, Mode=OneWay}" Style="{StaticResource CartCellTextStyle}" />
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <!-- 130: wide enough for "Niestandardowy" at the dialog's 14px font incl. cell padding. -->
+                            <DataGridTemplateColumn Header="Typ dostawy" Width="130">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource CartCellBorderStyle}">
+                                            <TextBox Text="{Binding DeliveryTypeDisplay, Mode=OneWay}" Style="{StaticResource CartCellTextStyle}" />
                                         </Border>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
@@ -189,7 +216,7 @@
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Border Style="{StaticResource CartCellBorderStyle}">
-                                            <TextBlock Text="{Binding SalePrice, StringFormat={}{0:N2} zł}" Style="{StaticResource CartCellTextStyle}" />
+                                            <TextBox Text="{Binding SalePrice, Mode=OneWay, StringFormat={}{0:N2} zł}" Style="{StaticResource CartCellTextStyle}" />
                                         </Border>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
@@ -208,7 +235,7 @@
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Border Style="{StaticResource CartCellBorderStyle}">
-                                            <TextBlock Text="{Binding LineTotal, StringFormat={}{0:N2} zł}" Style="{StaticResource CartCellTextStyle}" FontWeight="SemiBold" />
+                                            <TextBox Text="{Binding LineTotal, Mode=OneWay, StringFormat={}{0:N2} zł}" Style="{StaticResource CartCellTextStyle}" FontWeight="SemiBold" />
                                         </Border>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>

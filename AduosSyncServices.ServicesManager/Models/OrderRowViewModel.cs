@@ -30,6 +30,33 @@ namespace AduosSyncServices.ServicesManager.Models
             }
         }
 
+        // Whether the order's items sub-list (row details) is expanded in the grid.
+        private bool _isExpanded;
+        public bool IsExpanded
+        {
+            get => _isExpanded;
+            set
+            {
+                if (_isExpanded == value)
+                    return;
+
+                _isExpanded = value;
+                OnPropertyChanged(nameof(IsExpanded));
+            }
+        }
+
+        // Display rows for the order's items, enriched (image/delivery type) after orders load.
+        private List<OrderItemRowViewModel> _itemRows = new();
+        public List<OrderItemRowViewModel> ItemRows
+        {
+            get => _itemRows;
+            set
+            {
+                _itemRows = value;
+                OnPropertyChanged(nameof(ItemRows));
+            }
+        }
+
         public bool CanSelect =>
             !Order.SentToExternalCompany
             && Order.RealizeStatus == AllegroOrderStatus.NEW
@@ -59,6 +86,10 @@ namespace AduosSyncServices.ServicesManager.Models
         public string RecipientFirstName => Order.RecipientFirstName;
         public string RecipientLastName => Order.RecipientLastName;
         public string FullName => $"{Order.RecipientFirstName} {Order.RecipientLastName}".Trim();
+
+        // Multi-line address for the (selectable) details view.
+        public string FullAddress =>
+            $"{Order.RecipientStreet}\n{Order.RecipientPostalCode} {Order.RecipientCity}\n{Order.RecipientCountry}";
         public AllegroCheckoutFormStatus Status => Order.Status;
         public string StatusDisplay => Order.Status.GetDescription();
         public AllegroOrderStatus RealizeStatus => Order.RealizeStatus;

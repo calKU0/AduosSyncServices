@@ -147,7 +147,7 @@ namespace AduosSyncServices.Infrastructure.Services
             {
                 DeliveryAddressId = defaultAddress.Id,
                 DeliveryMethod = courier.GetDescription(),
-                CustomerNumber = orders.First().AllegroId,
+                CustomerNumber = "Zam. Zbiorcze",
                 Items = aggregatedQtyByIntegrationId
                     .Select(kvp => new GaskaCreateOrderItemRequest { Id = kvp.Key, Qty = kvp.Value.ToString(CultureInfo.InvariantCulture) })
                     .ToList()
@@ -325,7 +325,7 @@ namespace AduosSyncServices.Infrastructure.Services
                         DeliveryAddressId = address.AddressId,
                         DeliveryMethod = courier.GetDescription(),
                         DropshippingAmount = dropshippingAmount,
-                        CustomerNumber = order.AllegroId,
+                        CustomerNumber = order.RecipientFirstName + " " + order.RecipientLastName,
                         Items = qtyByIntegrationId
                             .Select(kvp => new GaskaCreateOrderItemRequest { Id = kvp.Key, Qty = kvp.Value.ToString(CultureInfo.InvariantCulture) })
                             .ToList()

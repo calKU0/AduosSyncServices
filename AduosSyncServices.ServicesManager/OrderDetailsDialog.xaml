@@ -15,6 +15,12 @@
             <Setter Property="Foreground" Value="#111827" />
             <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
+        <!-- Selectable variant of InfoValueStyle (read-only TextBox) so values can be copied. -->
+        <Style x:Key="InfoValueSelectableStyle" TargetType="TextBox" BasedOn="{StaticResource SelectableTextStyle}">
+            <Setter Property="Foreground" Value="#111827" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+        </Style>
         <Style x:Key="InfoSectionHeaderStyle" TargetType="TextBlock">
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="FontSize" Value="15" />
@@ -64,29 +70,23 @@
                         <TextBlock Text="Dane odbiorcy" Style="{StaticResource InfoSectionHeaderStyle}" />
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                             <TextBlock Text="Klient:" Style="{StaticResource InfoLabelStyle}" />
-                            <TextBlock Text="{Binding FullName}" Style="{StaticResource InfoValueStyle}" />
+                            <TextBox Text="{Binding FullName, Mode=OneWay}" Style="{StaticResource InfoValueSelectableStyle}" />
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                             <TextBlock Text="Firma:" Style="{StaticResource InfoLabelStyle}" />
-                            <TextBlock Text="{Binding Order.RecipientCompanyName}" Style="{StaticResource InfoValueStyle}" />
+                            <TextBox Text="{Binding Order.RecipientCompanyName, Mode=OneWay}" Style="{StaticResource InfoValueSelectableStyle}" />
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                             <TextBlock Text="Adres:" Style="{StaticResource InfoLabelStyle}" />
-                            <TextBlock Style="{StaticResource InfoValueStyle}">
-                                <Run Text="{Binding Order.RecipientStreet, Mode=OneWay}" />
-                                <LineBreak />
-                                <Run Text="{Binding Order.RecipientPostalCode, Mode=OneWay}" /><Run Text=" " /><Run Text="{Binding Order.RecipientCity, Mode=OneWay}" />
-                                <LineBreak />
-                                <Run Text="{Binding Order.RecipientCountry, Mode=OneWay}" />
-                            </TextBlock>
+                            <TextBox Text="{Binding FullAddress, Mode=OneWay}" Style="{StaticResource InfoValueSelectableStyle}" />
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                             <TextBlock Text="Email:" Style="{StaticResource InfoLabelStyle}" />
-                            <TextBlock Text="{Binding Order.RecipientEmail}" Style="{StaticResource InfoValueStyle}" />
+                            <TextBox Text="{Binding Order.RecipientEmail, Mode=OneWay}" Style="{StaticResource InfoValueSelectableStyle}" />
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                             <TextBlock Text="Telefon:" Style="{StaticResource InfoLabelStyle}" />
-                            <TextBlock Text="{Binding Order.RecipientPhoneNumber}" Style="{StaticResource InfoValueStyle}" />
+                            <TextBox Text="{Binding Order.RecipientPhoneNumber, Mode=OneWay}" Style="{StaticResource InfoValueSelectableStyle}" />
                         </StackPanel>
                     </StackPanel>
 
@@ -94,27 +94,27 @@
                         <TextBlock Text="Status zamówienia" Style="{StaticResource InfoSectionHeaderStyle}" />
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                             <TextBlock Text="Status:" Style="{StaticResource InfoLabelStyle}" />
-                            <TextBlock Text="{Binding StatusDisplay}" Style="{StaticResource InfoValueStyle}" />
+                            <TextBox Text="{Binding StatusDisplay, Mode=OneWay}" Style="{StaticResource InfoValueSelectableStyle}" />
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                             <TextBlock Text="Status realizacji:" Style="{StaticResource InfoLabelStyle}" />
-                            <TextBlock Text="{Binding RealizeStatusDisplay}" Style="{StaticResource InfoValueStyle}" />
+                            <TextBox Text="{Binding RealizeStatusDisplay, Mode=OneWay}" Style="{StaticResource InfoValueSelectableStyle}" />
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                             <TextBlock Text="Metoda dostawy:" Style="{StaticResource InfoLabelStyle}" />
-                            <TextBlock Text="{Binding DeliveryMethodName}" Style="{StaticResource InfoValueStyle}" />
+                            <TextBox Text="{Binding DeliveryMethodName, Mode=OneWay}" Style="{StaticResource InfoValueSelectableStyle}" />
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                             <TextBlock Text="Płatność:" Style="{StaticResource InfoLabelStyle}" />
-                            <TextBlock Text="{Binding PaymentTypeDisplay}" Style="{StaticResource InfoValueStyle}" />
+                            <TextBox Text="{Binding PaymentTypeDisplay, Mode=OneWay}" Style="{StaticResource InfoValueSelectableStyle}" />
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                             <TextBlock Text="Kwota:" Style="{StaticResource InfoLabelStyle}" />
-                            <TextBlock Text="{Binding AmountDisplay}" Style="{StaticResource InfoValueStyle}" FontWeight="SemiBold" />
+                            <TextBox Text="{Binding AmountDisplay, Mode=OneWay}" Style="{StaticResource InfoValueSelectableStyle}" FontWeight="SemiBold" />
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                             <TextBlock Text="Data utworzenia:" Style="{StaticResource InfoLabelStyle}" />
-                            <TextBlock Text="{Binding CreatedAt, StringFormat={}{0:yyyy-MM-dd HH:mm}}" Style="{StaticResource InfoValueStyle}" />
+                            <TextBox Text="{Binding CreatedAt, Mode=OneWay, StringFormat={}{0:yyyy-MM-dd HH:mm}}" Style="{StaticResource InfoValueSelectableStyle}" />
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                             <TextBlock Text="Status wewnętrzny:" Style="{StaticResource InfoLabelStyle}" />
@@ -143,15 +143,15 @@
                     <TextBlock Text="Informacje u dostawcy" Style="{StaticResource InfoSectionHeaderStyle}" />
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                         <TextBlock Text="Nr zam. u dostawcy:" Style="{StaticResource InfoLabelStyle}" />
-                        <TextBlock Text="{Binding ExternalOrderNumber}" Style="{StaticResource InfoValueStyle}" />
+                        <TextBox Text="{Binding ExternalOrderNumber, Mode=OneWay}" Style="{StaticResource InfoValueSelectableStyle}" />
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                         <TextBlock Text="Status u dostawcy:" Style="{StaticResource InfoLabelStyle}" />
-                        <TextBlock Text="{Binding ExternalOrderStatus}" Style="{StaticResource InfoValueStyle}" />
+                        <TextBox Text="{Binding ExternalOrderStatus, Mode=OneWay}" Style="{StaticResource InfoValueSelectableStyle}" />
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                         <TextBlock Text="Kurier dostawcy:" Style="{StaticResource InfoLabelStyle}" />
-                        <TextBlock Text="{Binding ExternalDeliveryName}" Style="{StaticResource InfoValueStyle}" />
+                        <TextBox Text="{Binding ExternalDeliveryName, Mode=OneWay}" Style="{StaticResource InfoValueSelectableStyle}" />
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                         <TextBlock Text="Dropshipping:" Style="{StaticResource InfoLabelStyle}" />
@@ -173,13 +173,18 @@
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                         <TextBlock Text="Nr śledzenia:" Style="{StaticResource InfoLabelStyle}" />
-                        <TextBlock Text="{Binding TrackingNumbers}" Style="{StaticResource InfoValueStyle}" />
+                        <TextBox Text="{Binding TrackingNumbers, Mode=OneWay}" Style="{StaticResource InfoValueSelectableStyle}" />
                     </StackPanel>
                 </StackPanel>
 
                 <TextBlock Text="Pozycje zamówienia" Style="{StaticResource InfoSectionHeaderStyle}" />
                 <Border BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Padding="4" Margin="0,0,0,20" Background="White">
-                    <DataGrid x:Name="DgLineItems" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="220" RowHeight="36"
+                    <!-- Row virtualization is OFF on purpose: auto-sized columns (Kod) only measure
+                         realised rows, so a long code in a virtualized row would stay clipped forever.
+                         CanContentScroll=False additionally gives smooth per-pixel scrolling. Both are
+                         fine here - an order has at most a few dozen line items. -->
+                    <DataGrid x:Name="DgLineItems" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="260" RowHeight="48"
+                              EnableRowVirtualization="False" ScrollViewer.CanContentScroll="False"
                               HeadersVisibility="Column" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#E5E7EB"
                               BorderThickness="0" RowHeaderWidth="0" CanUserAddRows="False" CanUserResizeColumns="False">
                         <DataGrid.CellStyle>
@@ -189,11 +194,20 @@
                             <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource DialogGridHeaderStyle}" />
                         </DataGrid.ColumnHeaderStyle>
                         <DataGrid.Columns>
-                            <DataGridTemplateColumn Header="Kod" Width="110">
+                            <DataGridTemplateColumn Header="Zdjęcie" Width="Auto">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Border Style="{StaticResource DialogCellBorderStyle}">
-                                            <TextBlock Text="{Binding Code}" Style="{StaticResource DialogCellTextStyle}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Code}" />
+                                            <Image Source="{Binding ImageUrl, Converter={StaticResource PathToImage}}" Width="30" Height="30" Stretch="Uniform" HorizontalAlignment="Left" VerticalAlignment="Center" />
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Kod" Width="Auto">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource DialogCellBorderStyle}">
+                                            <TextBox Text="{Binding Code, Mode=OneWay}" Style="{StaticResource DialogCellTextStyle}" ToolTip="{Binding Code}" />
                                         </Border>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
@@ -202,7 +216,9 @@
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Border Style="{StaticResource DialogCellBorderStyle}">
-                                            <TextBlock Text="{Binding OfferName}" Style="{StaticResource DialogCellTextStyle}" TextTrimming="CharacterEllipsis" ToolTip="{Binding OfferName}" />
+                                            <!-- Nazwa is the only column allowed to truncate (ellipsis + full name in tooltip);
+                                                 TextBox cannot render ellipsis, hence a TextBlock here. -->
+                                            <TextBlock Text="{Binding OfferName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip="{Binding OfferName}" />
                                         </Border>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
@@ -211,7 +227,7 @@
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Border Style="{StaticResource DialogCellBorderStyle}">
-                                            <TextBlock Text="{Binding Quantity}" Style="{StaticResource DialogCellTextStyle}" />
+                                            <TextBox Text="{Binding Quantity, Mode=OneWay}" Style="{StaticResource DialogCellTextStyle}" />
                                         </Border>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
@@ -220,7 +236,17 @@
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Border Style="{StaticResource DialogCellBorderStyle}">
-                                            <TextBlock Text="{Binding Unit}" Style="{StaticResource DialogCellTextStyle}" />
+                                            <TextBox Text="{Binding Unit, Mode=OneWay}" Style="{StaticResource DialogCellTextStyle}" />
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <!-- 130: wide enough for "Niestandardowy" at the dialog's 14px font incl. cell padding. -->
+                            <DataGridTemplateColumn Header="Typ dostawy" Width="130">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource DialogCellBorderStyle}">
+                                            <TextBox Text="{Binding DeliveryTypeDisplay, Mode=OneWay}" Style="{StaticResource DialogCellTextStyle}" />
                                         </Border>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
@@ -229,7 +255,7 @@
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Border Style="{StaticResource DialogCellBorderStyle}">
-                                            <TextBlock Text="{Binding PriceGross}" Style="{StaticResource DialogCellTextStyle}" TextTrimming="CharacterEllipsis" ToolTip="{Binding PriceGross}" />
+                                            <TextBox Text="{Binding PriceGross, Mode=OneWay}" Style="{StaticResource DialogCellTextStyle}" ToolTip="{Binding PriceGross}" />
                                         </Border>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
