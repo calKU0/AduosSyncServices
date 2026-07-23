@@ -52,6 +52,7 @@ namespace AduosSyncServices.Infrastructure.Services
             }
 
             var shortages = new List<StockShortage>();
+            var availableByIntegrationId = new Dictionary<int, float>();
             var remaining = requestedByIntegrationId.Count;
 
             foreach (var (integrationId, (requestedQty, product)) in requestedByIntegrationId)
@@ -66,6 +67,7 @@ namespace AduosSyncServices.Infrastructure.Services
 
                 var response = await _gaskaApiClient.GetProduct(integrationId, "pl", ct);
                 var availableQty = response?.Product?.InStock ?? 0f;
+                availableByIntegrationId[integrationId] = availableQty;
                 var isAvailable = availableQty >= requestedQty;
 
                 if (!isAvailable)
@@ -94,7 +96,61 @@ namespace AduosSyncServices.Infrastructure.Services
                     await Task.Delay(TimeSpan.FromSeconds(_productIntervalSeconds), ct);
             }
 
-            return new StockCheckResult { IsSuccessful = shortages.Count == 0, Shortages = shortages };
+            return new StockCheckResult
+            {
+                IsSuccessful = shortages.Count == 0,
+                Shortages = shortages,
+                ShortagesByOrderId = AllocateStockPerOrder(orders, productsById, availableByIntegrationId)
+            };
+        }
+
+        // Greedy per-order stock allocation: walk the orders in the given sequence, reserve stock for
+        // every order that fully fits in what's left, and record the blocking shortages for the ones
+        // that don't (WITHOUT reserving - a skipped order must not eat stock from later orders).
+        // Products missing from the local Products table are ignored, mirroring the aggregate check.
+        private static Dictionary<int, List<StockShortage>> AllocateStockPerOrder(
+            IReadOnlyCollection<AllegroOrder> orders,
+            Dictionary<int, Product> productsById,
+            Dictionary<int, float> availableByIntegrationId)
+        {
+            var remainingStock = new Dictionary<int, float>(availableByIntegrationId);
+            var shortagesByOrderId = new Dictionary<int, List<StockShortage>>();
+
+            foreach (var order in orders)
+            {
+                var needs = new Dictionary<int, (float Qty, Product Product)>();
+                foreach (var item in order.Items)
+                {
+                    if (!productsById.TryGetValue(item.ProductId, out var product))
+                        continue;
+
+                    needs[product.IntegrationId] = needs.TryGetValue(product.IntegrationId, out var existing)
+                        ? (existing.Qty + item.Quantity, product)
+                        : (item.Quantity, product);
+                }
+
+                var orderShortages = needs
+                    .Where(n => remainingStock.GetValueOrDefault(n.Key) < n.Value.Qty)
+                    .Select(n => new StockShortage
+                    {
+                        ProductCode = n.Value.Product.Code,
+                        ProductName = n.Value.Product.Name,
+                        RequestedQty = n.Value.Qty,
+                        AvailableQty = remainingStock.GetValueOrDefault(n.Key)
+                    })
+                    .ToList();
+
+                if (orderShortages.Count > 0)
+                {
+                    shortagesByOrderId[order.Id] = orderShortages;
+                    continue;
+                }
+
+                foreach (var (integrationId, need) in needs)
+                    remainingStock[integrationId] = remainingStock.GetValueOrDefault(integrationId) - need.Qty;
+            }
+
+            return shortagesByOrderId;
         }
 
         public async Task<HeadquartersOrderPlacementResult> PlaceHeadquartersOrderAsync(
@@ -114,12 +170,25 @@ namespace AduosSyncServices.Infrastructure.Services
             if (!courier.IsAvailableForHeadquarters())
                 return Failure("Wybrana metoda dostawy jest dostępna wyłącznie przy wysyłce bezpośrednio do klientów.");
 
+            var skippedWarnings = new List<string>();
             if (!skipStockCheck)
             {
                 statusProgress?.Report("Sprawdzanie dostępności produktów...");
                 var stockCheck = await CheckStockAsync(orders, null, ct);
                 if (!stockCheck.IsSuccessful)
-                    return Failure(BuildShortageMessage(stockCheck.Shortages));
+                {
+                    // Skip only the orders that don't fit in stock; place the rest. Skipped orders are
+                    // left untouched - not sent to Gąska, no PROCESSING update.
+                    var placeable = orders.Where(o => !stockCheck.ShortagesByOrderId.ContainsKey(o.Id)).ToList();
+                    if (placeable.Count == 0)
+                        return Failure(BuildShortageMessage(stockCheck.Shortages));
+
+                    skippedWarnings = orders
+                        .Where(o => stockCheck.ShortagesByOrderId.ContainsKey(o.Id))
+                        .Select(o => $"Pominięto zamówienie {o.AllegroId} - {BuildShortageMessage(stockCheck.ShortagesByOrderId[o.Id])}")
+                        .ToList();
+                    orders = placeable;
+                }
             }
 
             statusProgress?.Report("Pobieranie domyślnego adresu dostawy...");
@@ -161,7 +230,9 @@ namespace AduosSyncServices.Infrastructure.Services
             }
             catch (Exception ex) when (IsHttpTimeout(ex))
             {
-                return await MarkAsOrderedAfterTimeoutAsync(orders, isDropshipping: false, statusProgress, ct);
+                var timeoutResult = await MarkAsOrderedAfterTimeoutAsync(orders, isDropshipping: false, statusProgress, ct);
+                timeoutResult.Warnings.InsertRange(0, skippedWarnings);
+                return timeoutResult;
             }
             catch (Exception ex)
             {
@@ -171,7 +242,7 @@ namespace AduosSyncServices.Infrastructure.Services
             if (response == null || response.Result != 0 || response.NewOrders.Count == 0)
                 return Failure(response?.Message ?? "Nieznany błąd podczas składania zamówienia w Gąsce.");
 
-            var warnings = new List<string>();
+            var warnings = new List<string>(skippedWarnings);
             var primaryGaskaOrderId = response.NewOrders.First();
 
             statusProgress?.Report("Weryfikowanie złożonego zamówienia w Gąsce...");
@@ -265,10 +336,21 @@ namespace AduosSyncServices.Infrastructure.Services
                 var stockCheck = await CheckStockAsync(orders, null, ct);
                 if (!stockCheck.IsSuccessful)
                 {
-                    var message = BuildShortageMessage(stockCheck.Shortages);
-                    foreach (var order in orders)
-                        result.Results.Add(new CustomerOrderPlacementResult { AllegroOrderId = order.Id, IsSuccessful = false, ErrorMessage = message });
-                    return result;
+                    // Fail only the orders that don't fit in stock (they are not sent to Gąska and
+                    // keep their Allegro status untouched); every other order is still placed.
+                    foreach (var order in orders.Where(o => stockCheck.ShortagesByOrderId.ContainsKey(o.Id)))
+                    {
+                        result.Results.Add(new CustomerOrderPlacementResult
+                        {
+                            AllegroOrderId = order.Id,
+                            IsSuccessful = false,
+                            ErrorMessage = $"Pominięto z powodu braków magazynowych - {BuildShortageMessage(stockCheck.ShortagesByOrderId[order.Id])}"
+                        });
+                    }
+
+                    orders = orders.Where(o => !stockCheck.ShortagesByOrderId.ContainsKey(o.Id)).ToList();
+                    if (orders.Count == 0)
+                        return result;
                 }
             }
 

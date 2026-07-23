@@ -183,6 +183,7 @@ namespace AduosSyncServices.ServicesManager
 
                 UpdatePlaceOrderButtonState();
                 UpdateExpandAllButtonLabel();
+                UpdateSelectAllButtonLabel();
 
                 // Fill in the item sub-lists (image, delivery type) after the grid is already showing.
                 await BuildOrderItemRowsAsync(context);
@@ -333,13 +334,22 @@ namespace AduosSyncServices.ServicesManager
             _dropshippingFilter = CbDropshippingFilter.SelectedValues.Cast<bool>().ToHashSet();
             _internalStatusFilter = CbInternalStatusFilter.SelectedValues.Cast<int>().ToHashSet();
             _ordersView?.Refresh();
+
+            // The visible set just changed, so the select-all label may flip meaning.
+            UpdateSelectAllButtonLabel();
         }
 
         private void OrderRow_PropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName == nameof(OrderRowViewModel.IsSelected))
             {
-                UpdatePlaceOrderButtonState();
+                // Counter/label recomputation walks the whole list - during select/unselect-all the
+                // caller updates them once after the loop instead of once per row.
+                if (!_isBulkSelectInProgress)
+                {
+                    UpdatePlaceOrderButtonState();
+                    UpdateSelectAllButtonLabel();
+                }
             }
             else if (e.PropertyName == nameof(OrderRowViewModel.IsExpanded))
             {
@@ -354,6 +364,53 @@ namespace AduosSyncServices.ServicesManager
         }
 
         private bool _isBulkExpandInProgress;
+        private bool _isBulkSelectInProgress;
+
+        // Rows currently passing the filters - selection shortcuts act on what the user can see.
+        private IEnumerable<OrderRowViewModel> VisibleOrderRows() =>
+            _ordersView?.Cast<OrderRowViewModel>() ?? Enumerable.Empty<OrderRowViewModel>();
+
+        private void SetAllVisibleSelected(bool selected)
+        {
+            _isBulkSelectInProgress = true;
+            try
+            {
+                foreach (var row in VisibleOrderRows())
+                    row.IsSelected = selected;
+            }
+            finally
+            {
+                _isBulkSelectInProgress = false;
+            }
+
+            UpdatePlaceOrderButtonState();
+            UpdateSelectAllButtonLabel();
+        }
+
+        private void BtnToggleSelectAll_Click(object sender, RoutedEventArgs e)
+        {
+            // Select all visible rows unless every one is already selected - then unselect them.
+            var selectAll = VisibleOrderRows().Any(o => !o.IsSelected);
+            SetAllVisibleSelected(selectAll);
+        }
+
+        private void UpdateSelectAllButtonLabel()
+        {
+            var anyUnselected = VisibleOrderRows().Any(o => !o.IsSelected);
+            var anyVisible = VisibleOrderRows().Any();
+            BtnToggleSelectAll.Content = anyVisible && !anyUnselected ? "Odznacz wszystkie" : "Zaznacz wszystkie";
+        }
+
+        // PreviewKeyDown, not KeyDown: DataGrid's own Ctrl+A (row selection) handles the bubbling
+        // event before it would reach an instance handler, so hook the tunneling one.
+        private void LvOrders_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.A && Keyboard.Modifiers == ModifierKeys.Control)
+            {
+                SetAllVisibleSelected(true);
+                e.Handled = true;
+            }
+        }
 
         // DetailsVisibility must be set as a LOCAL value on the realised DataGridRow container - the
         // grid's explicit RowDetailsVisibilityMode outranks any RowStyle binding, so styles can't

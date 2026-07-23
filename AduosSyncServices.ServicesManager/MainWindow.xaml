@@ -446,6 +446,8 @@
                                         ToolTip="Zarządzaj listą statusów wewnętrznych (dodaj, edytuj, usuń)." />
                                 <Button x:Name="BtnToggleExpandAll" Style="{StaticResource SecondaryButtonStyle}" Content="Rozwiń wszystkie" Click="BtnToggleExpandAll_Click"
                                         ToolTip="Rozwija lub zwija elementy wszystkich zamówień na liście." />
+                                <Button x:Name="BtnToggleSelectAll" Style="{StaticResource SecondaryButtonStyle}" Content="Zaznacz wszystkie" Click="BtnToggleSelectAll_Click"
+                                        ToolTip="Zaznacza lub odznacza checkboxy wszystkich widocznych (przefiltrowanych) zamówień. Skrót: Ctrl+A." />
                                 <TextBlock x:Name="SelectedOrdersCountText" Text="Zaznaczono: 0" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="#6B7280" />
                                 <StackPanel x:Name="RefreshStatusPanel" Orientation="Horizontal" Visibility="Collapsed" Margin="12,0,0,0" VerticalAlignment="Center">
                                     <controls:LoadingSpinner Width="18" Height="18" Margin="0,0,8,0" />
@@ -468,6 +470,7 @@
                                   CanUserSortColumns="False"
                                   MouseDoubleClick="LvOrders_MouseDoubleClick"
                                   KeyDown="LvOrders_KeyDown"
+                                  PreviewKeyDown="LvOrders_PreviewKeyDown"
                                   SelectionChanged="LvOrders_SelectionChanged"
                                   LoadingRow="LvOrders_LoadingRow"
                                   HeadersVisibility="Column"
@@ -671,8 +674,26 @@
                                         <DataTemplate>
                                             <Border Style="{StaticResource OrderCellBorderStyle}">
                                                 <!-- Always selectable: any order can be checked (e.g. to set an internal
-                                                     status). Placement/deletion eligibility is enforced on those buttons. -->
-                                                <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" HorizontalAlignment="Center" VerticalAlignment="Center" Click="OrderCheckBox_Click" />
+                                                     status). Placement/deletion eligibility is enforced on those buttons.
+                                                     Colour doubles as a status cue: green = already placed at Gąska,
+                                                     red = not sent yet. -->
+                                                <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" HorizontalAlignment="Center" VerticalAlignment="Center" Click="OrderCheckBox_Click">
+                                                    <CheckBox.Style>
+                                                        <Style TargetType="CheckBox">
+                                                            <Setter Property="BorderBrush" Value="#DC2626" />
+                                                            <Setter Property="Background" Value="#FEE2E2" />
+                                                            <Setter Property="BorderThickness" Value="1.5" />
+                                                            <Setter Property="ToolTip" Value="Zamówienie niewysłane do Gąski" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding SentToExternalCompany}" Value="True">
+                                                                    <Setter Property="BorderBrush" Value="#16A34A" />
+                                                                    <Setter Property="Background" Value="#DCFCE7" />
+                                                                    <Setter Property="ToolTip" Value="Zamówienie wysłane do Gąski" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </CheckBox.Style>
+                                                </CheckBox>
                                             </Border>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>

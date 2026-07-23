@@ -34,7 +34,6 @@ namespace AduosSyncServices.Infrastructure.Clients
         {
             var query = new Dictionary<string, string?>
             {
-                ["category"] = request.CategoryId?.ToString(),
                 ["perPage"] = request.PageSize.ToString(),
                 ["page"] = request.Page.ToString(),
                 ["lng"] = request.Language
@@ -42,7 +41,7 @@ namespace AduosSyncServices.Infrastructure.Clients
 
             if (request.CategoryId is > 0)
             {
-                query["categoryId"] = request.CategoryId.Value.ToString();
+                query["category"] = request.CategoryId.Value.ToString();
             }
 
             return await GetDataAsync<GaskaGetProductsResponse>("/products", query, cancellationToken);
