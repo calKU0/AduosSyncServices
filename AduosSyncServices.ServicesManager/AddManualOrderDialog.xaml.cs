@@ -3,6 +3,7 @@ using AduosSyncServices.Contracts.Extensions;
 using AduosSyncServices.Contracts.Interfaces;
 using AduosSyncServices.Contracts.Models;
 using AduosSyncServices.Contracts.OrderPlacement;
+using AduosSyncServices.Infrastructure.Helpers;
 using AduosSyncServices.ServicesManager.Helpers;
 using AduosSyncServices.ServicesManager.Models;
 using AduosSyncServices.ServicesManager.Services;
@@ -27,6 +28,8 @@ namespace AduosSyncServices.ServicesManager
             public string Code { get; set; } = string.Empty;
             public string Name { get; set; } = string.Empty;
             public string Unit { get; set; } = string.Empty;
+            public string? ImageUrl { get; set; }
+            public string DeliveryTypeDisplay { get; set; } = "-";
             public decimal SalePrice { get; set; }
 
             // 1 when the product has no PackRequired package - "no packaging constraint" is
@@ -90,6 +93,7 @@ namespace AduosSyncServices.ServicesManager
         private readonly IOrderRepository _orderRepository;
         private readonly IProductRepository _productRepository;
         private readonly IGaskaOrderPlacementService _placementService;
+        private readonly IReadOnlyList<MarginRange> _marginRanges;
         private readonly AllegroAccount _account;
         private readonly IntegrationCompany _integrationCompany;
         private readonly DialogService _dialogService = new();
@@ -113,6 +117,7 @@ namespace AduosSyncServices.ServicesManager
             IOrderRepository orderRepository,
             IProductRepository productRepository,
             IGaskaOrderPlacementService placementService,
+            IReadOnlyList<MarginRange> marginRanges,
             AllegroAccount account,
             IntegrationCompany integrationCompany)
         {
@@ -121,6 +126,7 @@ namespace AduosSyncServices.ServicesManager
             _orderRepository = orderRepository;
             _productRepository = productRepository;
             _placementService = placementService;
+            _marginRanges = marginRanges;
             _account = account;
             _integrationCompany = integrationCompany;
 
@@ -208,6 +214,7 @@ namespace AduosSyncServices.ServicesManager
             {
                 SearchSpinner.Visibility = Visibility.Visible;
                 var results = await _productRepository.SearchOrderableProductsAsync(term, 0, cts.Token);
+                await ApplySalePricesAsync(results);
 
                 if (cts.IsCancellationRequested)
                     return;
@@ -260,6 +267,7 @@ namespace AduosSyncServices.ServicesManager
             try
             {
                 var nextPage = await _productRepository.SearchOrderableProductsAsync(term, _lastSearchResults.Count, CancellationToken.None);
+                await ApplySalePricesAsync(nextPage);
 
                 // The search box may have moved on to a different term while this page was loading.
                 if (term != _lastSearchedTerm)
@@ -302,6 +310,22 @@ namespace AduosSyncServices.ServicesManager
             TxtSearch.Focus();
         }
 
+        // Sale price = net price x the products-service margin, and the thumbnail = the product's
+        // first image file from the products-service image folder - both computed here because the
+        // search no longer reads them from an Allegro offer. The image lookup is a disk probe per
+        // product (up to a full result page), so it runs off the UI thread.
+        private async Task ApplySalePricesAsync(List<OrderableProduct> products)
+        {
+            foreach (var product in products)
+                product.SalePrice = SalePriceCalculator.Calculate(product.PurchasePriceNet, _marginRanges);
+
+            await Task.Run(() =>
+            {
+                foreach (var product in products)
+                    product.ImageUrl = ImageHelper.GetFirstImageFile(ImageHelper.DefaultImagesFolder, product.ProductId);
+            });
+        }
+
         private void AddProductToCart(OrderableProduct product)
         {
             var existing = _cart.FirstOrDefault(c => c.ProductId == product.ProductId);
@@ -319,6 +343,8 @@ namespace AduosSyncServices.ServicesManager
                 Code = product.Code,
                 Name = product.Name,
                 Unit = product.Unit,
+                ImageUrl = product.ImageUrl,
+                DeliveryTypeDisplay = OrderItemRowViewModel.FormatDeliveryType(product.DeliveryType),
                 SalePrice = product.SalePrice,
                 PackQty = product.PackQty,
                 MaxStock = product.InStock,

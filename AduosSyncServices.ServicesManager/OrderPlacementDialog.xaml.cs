@@ -3,6 +3,7 @@ using AduosSyncServices.Contracts.Extensions;
 using AduosSyncServices.Contracts.Interfaces;
 using AduosSyncServices.Contracts.Models;
 using AduosSyncServices.Contracts.OrderPlacement;
+using AduosSyncServices.Infrastructure.Helpers;
 using AduosSyncServices.ServicesManager.Helpers;
 using AduosSyncServices.ServicesManager.Models;
 using AduosSyncServices.ServicesManager.Services;
@@ -21,7 +22,7 @@ namespace AduosSyncServices.ServicesManager
             public string ClientName { get; set; } = string.Empty;
             public decimal Amount { get; set; }
         }
-        private record LineItemRow(string ClientName, string Code, string OfferName, int Quantity, string Unit);
+        private record LineItemRow(string? ImageUrl, string ClientName, string Code, string OfferName, int Quantity, string Unit, string DeliveryTypeDisplay);
 
         private static string GetClientName(AllegroOrder order)
         {
@@ -69,11 +70,13 @@ namespace AduosSyncServices.ServicesManager
                     Product? product = null;
                     productsById?.TryGetValue(i.ProductId, out product);
                     return new LineItemRow(
+                        ImageHelper.GetFirstImageFile(ImageHelper.DefaultImagesFolder, i.ProductId),
                         GetClientName(o),
                         product?.Code ?? "-",
                         i.OfferName,
                         i.Quantity,
-                        product?.Unit ?? "-");
+                        product?.Unit ?? "-",
+                        OrderItemRowViewModel.FormatDeliveryType(product?.DeliveryType));
                 }))
                 .ToList();
 
@@ -93,8 +96,8 @@ namespace AduosSyncServices.ServicesManager
             }
             catch
             {
-                // Best-effort: fall through with productsById == null, showing "-" for Code/Jm - it
-                // isn't required for placing the order itself.
+                // Best-effort: fall through with productsById == null, showing "-" for Code/Jm and no
+                // delivery type - it isn't required for placing the order itself.
             }
 
             DgLineItems.ItemsSource = BuildLineItems(productsById);

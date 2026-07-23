@@ -50,7 +50,7 @@ namespace AduosSyncServices.ServicesManager
                         .Where(f => config.GetSection(f.Key).Exists())
                         .ToList();
 
-                    if (!existingFields.Any() && group.Key != "Narzuty")
+                    if (!existingFields.Any())
                         continue;
 
                     var groupBox = new GroupBox { Header = group.Key, Margin = new Thickness(0, 6, 0, 6) };
@@ -58,14 +58,10 @@ namespace AduosSyncServices.ServicesManager
 
                     _configFieldUiBuilder.AddFields(groupPanel, existingFields, config);
 
-                    if (group.Key == "Narzuty")
-                    {
-                        LoadMarginRanges(config, groupPanel);
-                    }
-
                     groupBox.Content = groupPanel;
                     ConfigStackPanel.Children.Add(groupBox);
                 }
+                LoadMarginRanges(config);
                 LoadDeliveries(config);
                 LoadAllegroDeliveryNames(config);
 
@@ -148,14 +144,11 @@ namespace AduosSyncServices.ServicesManager
             ConfigStackPanel.Children.Add(groupBox);
         }
 
-        private void LoadMarginRanges(IConfiguration config, StackPanel groupPanel)
+        // Margin ranges get their own GroupBox (like Deliveries) instead of piggy-backing on a
+        // ConfigFieldDefinitions group - no plain field carries the "Narzuty" group, so a
+        // definitions-driven group would never be rendered.
+        private void LoadMarginRanges(IConfiguration config)
         {
-            if (!config.GetSection("PriceSettings").Exists())
-            {
-                _marginRangeEditor = null;
-                return;
-            }
-
             var section = config.GetSection("PriceSettings:MarginRanges");
             _marginRangesSectionExists = section.Exists();
             if (!_marginRangesSectionExists)
@@ -166,9 +159,11 @@ namespace AduosSyncServices.ServicesManager
 
             _marginRanges = section.Get<List<MarginRange>>() ?? new List<MarginRange>();
 
+            var groupBox = new GroupBox { Header = "Narzuty", Margin = new Thickness(0, 6, 0, 6) };
             _marginRangeEditor = new MarginRangeEditor();
             _marginRangeEditor.SetRanges(_marginRanges);
-            groupPanel.Children.Add(_marginRangeEditor);
+            groupBox.Content = _marginRangeEditor;
+            ConfigStackPanel.Children.Add(groupBox);
         }
 
         private void BtnReloadConfig_Click(object sender, RoutedEventArgs e)

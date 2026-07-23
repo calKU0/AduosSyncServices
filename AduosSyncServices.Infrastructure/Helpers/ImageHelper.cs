@@ -2,6 +2,15 @@
 {
     public static class ImageHelper
     {
+        // Root folder where the products service stores each product's downloaded images (one
+        // subfolder per product id). Defined here so the ServicesManager UI reads thumbnails from the
+        // exact same location the products service writes to.
+        public const string DefaultImagesFolder = @"C:\Program Files (x86)\Api Sync Services\Product_Images";
+
+        // First (alphabetically) image file of a product, or null when the product has none.
+        public static string? GetFirstImageFile(string folderPath, int productId) =>
+            GetImageFiles(folderPath, productId).FirstOrDefault();
+
         public static async Task<List<string>> SaveImagesAsync(HttpClient httpClient, List<string> urls, int productId, string baseDirectory, CancellationToken ct = default)
         {
             var savedFiles = new List<string>();

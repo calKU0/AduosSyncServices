@@ -35,7 +35,11 @@
 
                 <TextBlock Text="Pozycje zamówień" FontWeight="SemiBold" Margin="0,0,0,6" />
                 <Border BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Padding="4" Margin="0,0,0,16" Background="White">
-                    <DataGrid x:Name="DgLineItems" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="220" RowHeight="36"
+                    <!-- Row virtualization is OFF on purpose: auto-sized columns (Kod) only measure
+                         realised rows, so a long code in a virtualized row would stay clipped forever.
+                         CanContentScroll=False additionally gives smooth per-pixel scrolling. -->
+                    <DataGrid x:Name="DgLineItems" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="260" RowHeight="48"
+                              EnableRowVirtualization="False" ScrollViewer.CanContentScroll="False"
                               HeadersVisibility="Column" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#E5E7EB"
                               BorderThickness="0" RowHeaderWidth="0" CanUserAddRows="False" CanUserResizeColumns="False">
                         <DataGrid.CellStyle>
@@ -45,20 +49,29 @@
                             <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource DialogGridHeaderStyle}" />
                         </DataGrid.ColumnHeaderStyle>
                         <DataGrid.Columns>
-                            <DataGridTemplateColumn Header="Klient" Width="150">
+                            <DataGridTemplateColumn Header="Zdjęcie" Width="Auto">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Border Style="{StaticResource DialogCellBorderStyle}">
-                                            <TextBlock Text="{Binding ClientName}" Style="{StaticResource DialogCellTextStyle}" TextTrimming="CharacterEllipsis" ToolTip="{Binding ClientName}" />
+                                            <Image Source="{Binding ImageUrl, Converter={StaticResource PathToImage}}" Width="30" Height="30" Stretch="Uniform" HorizontalAlignment="Left" VerticalAlignment="Center" />
                                         </Border>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTemplateColumn Header="Kod" Width="110">
+                            <DataGridTemplateColumn Header="Klient" Width="150">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Border Style="{StaticResource DialogCellBorderStyle}">
-                                            <TextBlock Text="{Binding Code}" Style="{StaticResource DialogCellTextStyle}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Code}" />
+                                            <TextBox Text="{Binding ClientName, Mode=OneWay}" Style="{StaticResource DialogCellTextStyle}" ToolTip="{Binding ClientName}" />
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Kod" Width="Auto">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource DialogCellBorderStyle}">
+                                            <TextBox Text="{Binding Code, Mode=OneWay}" Style="{StaticResource DialogCellTextStyle}" ToolTip="{Binding Code}" />
                                         </Border>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
@@ -67,7 +80,9 @@
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Border Style="{StaticResource DialogCellBorderStyle}">
-                                            <TextBlock Text="{Binding OfferName}" Style="{StaticResource DialogCellTextStyle}" TextTrimming="CharacterEllipsis" ToolTip="{Binding OfferName}" />
+                                            <!-- Nazwa is the only column allowed to truncate (ellipsis + full name in tooltip);
+                                                 TextBox cannot render ellipsis, hence a TextBlock here. -->
+                                            <TextBlock Text="{Binding OfferName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip="{Binding OfferName}" />
                                         </Border>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
@@ -76,7 +91,7 @@
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Border Style="{StaticResource DialogCellBorderStyle}">
-                                            <TextBlock Text="{Binding Quantity}" Style="{StaticResource DialogCellTextStyle}" />
+                                            <TextBox Text="{Binding Quantity, Mode=OneWay}" Style="{StaticResource DialogCellTextStyle}" />
                                         </Border>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
@@ -85,7 +100,17 @@
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Border Style="{StaticResource DialogCellBorderStyle}">
-                                            <TextBlock Text="{Binding Unit}" Style="{StaticResource DialogCellTextStyle}" />
+                                            <TextBox Text="{Binding Unit, Mode=OneWay}" Style="{StaticResource DialogCellTextStyle}" />
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <!-- 130: wide enough for "Niestandardowy" at the dialog's 14px font incl. cell padding. -->
+                            <DataGridTemplateColumn Header="Typ dostawy" Width="130">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource DialogCellBorderStyle}">
+                                            <TextBox Text="{Binding DeliveryTypeDisplay, Mode=OneWay}" Style="{StaticResource DialogCellTextStyle}" />
                                         </Border>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>

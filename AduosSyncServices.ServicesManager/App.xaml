@@ -10,6 +10,7 @@
 
         <helpers:BooleanToVisibilityConverter x:Key="BoolToVis" />
         <helpers:HexColorToBrushConverter x:Key="HexToBrush" />
+        <helpers:PathToImageSourceConverter x:Key="PathToImage" />
 
         <!-- Solid blue call-to-action button. -->
         <Style x:Key="PrimaryActionButtonStyle" TargetType="Button">
@@ -142,8 +143,22 @@
             <Setter Property="VerticalAlignment" Value="Stretch" />
         </Style>
 
-        <Style x:Key="DialogCellTextStyle" TargetType="TextBlock">
+        <!-- Read-only, borderless TextBox used wherever display text must be selectable/copyable
+             (plain TextBlocks can't be selected in WPF). Bindings on it MUST be Mode=OneWay - the
+             default TwoWay throws on get-only properties. -->
+        <Style x:Key="SelectableTextStyle" TargetType="TextBox">
+            <Setter Property="IsReadOnly" Value="True" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="IsTabStop" Value="False" />
             <Setter Property="VerticalAlignment" Value="Center" />
+            <!-- Amber text-selection highlight: the default system blue is invisible on top of the
+                 blue selected-row background, and amber reads fine on white too. -->
+            <Setter Property="SelectionBrush" Value="#F59E0B" />
+            <Setter Property="SelectionOpacity" Value="0.55" />
         </Style>
+
+        <Style x:Key="DialogCellTextStyle" TargetType="TextBox" BasedOn="{StaticResource SelectableTextStyle}" />
     </Application.Resources>
 </Application>

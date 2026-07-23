@@ -444,6 +444,8 @@
                                 <Button x:Name="BtnAddOrder" Style="{StaticResource PrimaryActionButtonStyle}" Content="Dodaj zamówienie" Click="BtnAddOrder_Click" />
                                 <Button x:Name="BtnManageInternalStatuses" Style="{StaticResource SecondaryButtonStyle}" Content="Statusy wewnętrzne" Click="BtnManageInternalStatuses_Click"
                                         ToolTip="Zarządzaj listą statusów wewnętrznych (dodaj, edytuj, usuń)." />
+                                <Button x:Name="BtnToggleExpandAll" Style="{StaticResource SecondaryButtonStyle}" Content="Rozwiń wszystkie" Click="BtnToggleExpandAll_Click"
+                                        ToolTip="Rozwija lub zwija elementy wszystkich zamówień na liście." />
                                 <TextBlock x:Name="SelectedOrdersCountText" Text="Zaznaczono: 0" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="#6B7280" />
                                 <StackPanel x:Name="RefreshStatusPanel" Orientation="Horizontal" Visibility="Collapsed" Margin="12,0,0,0" VerticalAlignment="Center">
                                     <controls:LoadingSpinner Width="18" Height="18" Margin="0,0,8,0" />
@@ -467,6 +469,7 @@
                                   MouseDoubleClick="LvOrders_MouseDoubleClick"
                                   KeyDown="LvOrders_KeyDown"
                                   SelectionChanged="LvOrders_SelectionChanged"
+                                  LoadingRow="LvOrders_LoadingRow"
                                   HeadersVisibility="Column"
                                   GridLinesVisibility="Horizontal"
                                   HorizontalGridLinesBrush="#E5E7EB"
@@ -476,10 +479,12 @@
                                   IsReadOnly="True"
                                   SelectionUnit="FullRow"
                                   SelectionMode="Single"
+                                  RowDetailsVisibilityMode="Collapsed"
                                   Background="White"
                                   EnableRowVirtualization="True"
                                   VirtualizingPanel.IsVirtualizing="True"
-                                  VirtualizingPanel.VirtualizationMode="Recycling">
+                                  VirtualizingPanel.VirtualizationMode="Recycling"
+                                  VirtualizingPanel.ScrollUnit="Pixel">
                             <!-- Per-selection actions live here (declutters the toolbar). Right-click also
                                  selects the row first (see OrderRow_PreviewMouseRightButtonDown) so the menu
                                  acts on the clicked row when nothing is checked. -->
@@ -493,11 +498,96 @@
                                     <MenuItem x:Name="MenuItemDelete" Header="Usuń zamówienie" Click="BtnDeleteOrders_Click" />
                                 </ContextMenu>
                             </DataGrid.ContextMenu>
+                            <!-- Row details visibility is driven from code-behind (LvOrders_LoadingRow +
+                                 SyncRowDetailsVisibility): an explicit RowDetailsVisibilityMode on the grid
+                                 outranks a RowStyle binding on DetailsVisibility, so a style setter here
+                                 would never expand anything. -->
                             <DataGrid.RowStyle>
                                 <Style TargetType="DataGridRow">
                                     <EventSetter Event="PreviewMouseRightButtonDown" Handler="OrderRow_PreviewMouseRightButtonDown" />
                                 </Style>
                             </DataGrid.RowStyle>
+                            <!-- Order items sub-list, shown when the row is expanded. Columns are packed to
+                                 the left (Kod/Nazwa auto-sized, kept aligned between header and item rows via
+                                 SharedSizeGroup) and the trailing filler column absorbs the leftover width. -->
+                            <DataGrid.RowDetailsTemplate>
+                                <DataTemplate>
+                                    <Border BorderThickness="0,1,0,1">
+                                        <!-- A light blue tint ties the expanded items to their (blue) selected header row
+                                             without sacrificing readability of the white items card. -->
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="#EEF2F6" />
+                                                <Setter Property="BorderBrush" Value="#D8DEE6" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=DataGridRow}, Path=IsSelected}" Value="True">
+                                                        <Setter Property="Background" Value="#DBEAFE" />
+                                                        <Setter Property="BorderBrush" Value="#93C5FD" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <Border BorderBrush="#3B82F6" BorderThickness="3,0,0,0" Padding="45,10,24,14">
+                                            <StackPanel Grid.IsSharedSizeScope="True">
+                                                <TextBlock Text="ELEMENTY ZAMÓWIENIA" FontWeight="SemiBold" FontSize="11" Foreground="#6B7280" Margin="0,0,0,6" />
+                                                <Border Background="White" BorderBrush="#E2E6EB" BorderThickness="1" CornerRadius="6" Padding="12,8" HorizontalAlignment="Stretch">
+                                                    <StackPanel>
+                                                        <Grid Margin="0,0,0,6">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="60" />
+                                                                <ColumnDefinition Width="Auto" SharedSizeGroup="ItemCode" />
+                                                                <!-- The 480px cap on Nazwa sits on the item TextBlocks, not here: a MaxWidth on a
+                                                                     SharedSizeGroup column is not reliably honoured by WPF's shared-size measure. -->
+                                                                <ColumnDefinition Width="Auto" SharedSizeGroup="ItemName" />
+                                                                <ColumnDefinition Width="60" />
+                                                                <ColumnDefinition Width="50" />
+                                                                <ColumnDefinition Width="130" />
+                                                                <ColumnDefinition Width="Auto" SharedSizeGroup="ItemPrice" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Grid.Column="0" Text="Zdjęcie" FontWeight="SemiBold" FontSize="11" Foreground="#6B7280" />
+                                                            <TextBlock Grid.Column="1" Text="Kod" FontWeight="SemiBold" FontSize="11" Foreground="#6B7280" Margin="0,0,24,0" />
+                                                            <TextBlock Grid.Column="2" Text="Nazwa" FontWeight="SemiBold" FontSize="11" Foreground="#6B7280" Margin="0,0,24,0" />
+                                                            <TextBlock Grid.Column="3" Text="Ilość" FontWeight="SemiBold" FontSize="11" Foreground="#6B7280" />
+                                                            <TextBlock Grid.Column="4" Text="Jm" FontWeight="SemiBold" FontSize="11" Foreground="#6B7280" />
+                                                            <TextBlock Grid.Column="5" Text="Typ dostawy" FontWeight="SemiBold" FontSize="11" Foreground="#6B7280" />
+                                                            <TextBlock Grid.Column="6" Text="Cena sprzedaży" FontWeight="SemiBold" FontSize="11" Foreground="#6B7280" />
+                                                        </Grid>
+                                                        <Border Height="1" Background="#E5E7EB" Margin="0,0,0,4" />
+                                                        <ItemsControl ItemsSource="{Binding ItemRows}">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Grid Margin="0,4">
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="60" />
+                                                                            <ColumnDefinition Width="Auto" SharedSizeGroup="ItemCode" />
+                                                                            <ColumnDefinition Width="Auto" SharedSizeGroup="ItemName" />
+                                                                            <ColumnDefinition Width="60" />
+                                                                            <ColumnDefinition Width="50" />
+                                                                            <ColumnDefinition Width="130" />
+                                                                            <ColumnDefinition Width="Auto" SharedSizeGroup="ItemPrice" />
+                                                                            <ColumnDefinition Width="*" />
+                                                                        </Grid.ColumnDefinitions>
+                                                                        <Image Grid.Column="0" Source="{Binding ImageUrl, Converter={StaticResource PathToImage}}" Width="36" Height="36" Stretch="Uniform" HorizontalAlignment="Left" />
+                                                                        <TextBox Grid.Column="1" Text="{Binding Code, Mode=OneWay}" Style="{StaticResource SelectableTextStyle}" FontWeight="SemiBold" ToolTip="{Binding Code}" Margin="0,0,24,0" />
+                                                                        <!-- Nazwa is the only column allowed to truncate (ellipsis + tooltip); the MaxWidth
+                                                                             here caps the shared ItemName column, since long names never measure wider. -->
+                                                                        <TextBlock Grid.Column="2" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" HorizontalAlignment="Left" MaxWidth="480" ToolTip="{Binding Name}" Margin="0,0,24,0" />
+                                                                        <TextBox Grid.Column="3" Text="{Binding QuantityDisplay, Mode=OneWay}" Style="{StaticResource SelectableTextStyle}" />
+                                                                        <TextBox Grid.Column="4" Text="{Binding Unit, Mode=OneWay}" Style="{StaticResource SelectableTextStyle}" Foreground="#374151" />
+                                                                        <TextBox Grid.Column="5" Text="{Binding DeliveryTypeDisplay, Mode=OneWay}" Style="{StaticResource SelectableTextStyle}" Foreground="#374151" />
+                                                                        <TextBox Grid.Column="6" Text="{Binding PriceDisplay, Mode=OneWay}" Style="{StaticResource SelectableTextStyle}" FontWeight="SemiBold" Foreground="#15803D" />
+                                                                    </Grid>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </StackPanel>
+                                                </Border>
+                                            </StackPanel>
+                                        </Border>
+                                    </Border>
+                                </DataTemplate>
+                            </DataGrid.RowDetailsTemplate>
                             <!-- DataGridCell's CellStyle triggers (Background/Padding) do not reliably render in this
                                  DataGrid theme, so every column below paints its own padding on a Border inside the
                                  cell's DataTemplate instead - the same mechanism already used for the Dropshipping badge. -->
@@ -516,8 +606,8 @@
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
-                                <Style x:Key="OrderCellTextStyle" TargetType="TextBlock">
-                                    <Setter Property="VerticalAlignment" Value="Center" />
+                                <!-- Read-only TextBox (selectable/copyable) - bindings on it must be Mode=OneWay. -->
+                                <Style x:Key="OrderCellTextStyle" TargetType="TextBox" BasedOn="{StaticResource SelectableTextStyle}">
                                     <Setter Property="Foreground" Value="#111827" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=DataGridRow}, Path=IsSelected}" Value="True">
@@ -540,6 +630,42 @@
                                 </Style>
                             </DataGrid.ColumnHeaderStyle>
                             <DataGrid.Columns>
+                                <!-- Expander for the order's items sub-list (row details). -->
+                                <DataGridTemplateColumn Width="Auto" CanUserResize="False">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource OrderCellBorderStyle}">
+                                                <ToggleButton IsChecked="{Binding IsExpanded, Mode=TwoWay}" Click="OrderExpander_Click" Cursor="Hand"
+                                                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                              ToolTip="Pokaż/ukryj elementy zamówienia">
+                                                    <ToggleButton.Style>
+                                                        <Style TargetType="ToggleButton">
+                                                            <Setter Property="Content" Value="▸" />
+                                                            <Setter Property="FontSize" Value="17" />
+                                                            <Setter Property="FontWeight" Value="Bold" />
+                                                            <Setter Property="Foreground" Value="#6B7280" />
+                                                            <Setter Property="Template">
+                                                                <Setter.Value>
+                                                                    <ControlTemplate TargetType="ToggleButton">
+                                                                        <Border Background="Transparent" Padding="8,4">
+                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                                        </Border>
+                                                                    </ControlTemplate>
+                                                                </Setter.Value>
+                                                            </Setter>
+                                                            <Style.Triggers>
+                                                                <Trigger Property="IsChecked" Value="True">
+                                                                    <Setter Property="Content" Value="▾" />
+                                                                    <Setter Property="Foreground" Value="#3B82F6" />
+                                                                </Trigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </ToggleButton.Style>
+                                                </ToggleButton>
+                                            </Border>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
                                 <DataGridTemplateColumn Width="Auto" CanUserResize="False">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
@@ -555,7 +681,7 @@
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <Border Style="{StaticResource OrderCellBorderStyle}">
-                                                <TextBlock Text="{Binding FullName}" Style="{StaticResource OrderCellTextStyle}" />
+                                                <TextBox Text="{Binding FullName, Mode=OneWay}" Style="{StaticResource OrderCellTextStyle}" />
                                             </Border>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
@@ -564,7 +690,7 @@
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <Border Style="{StaticResource OrderCellBorderStyle}">
-                                                <TextBlock Text="{Binding AmountDisplay}" Style="{StaticResource OrderCellTextStyle}" />
+                                                <TextBox Text="{Binding AmountDisplay, Mode=OneWay}" Style="{StaticResource OrderCellTextStyle}" />
                                             </Border>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
@@ -621,7 +747,7 @@
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <Border Style="{StaticResource OrderCellBorderStyle}">
-                                                <TextBlock Text="{Binding StatusDisplay}" Style="{StaticResource OrderCellTextStyle}" />
+                                                <TextBox Text="{Binding StatusDisplay, Mode=OneWay}" Style="{StaticResource OrderCellTextStyle}" />
                                             </Border>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
@@ -630,7 +756,7 @@
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <Border Style="{StaticResource OrderCellBorderStyle}">
-                                                <TextBlock Text="{Binding RealizeStatusDisplay}" Style="{StaticResource OrderCellTextStyle}" />
+                                                <TextBox Text="{Binding RealizeStatusDisplay, Mode=OneWay}" Style="{StaticResource OrderCellTextStyle}" />
                                             </Border>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
@@ -639,7 +765,7 @@
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <Border Style="{StaticResource OrderCellBorderStyle}">
-                                                <TextBlock Text="{Binding DeliveryMethodName}" Style="{StaticResource OrderCellTextStyle}" />
+                                                <TextBox Text="{Binding DeliveryMethodName, Mode=OneWay}" Style="{StaticResource OrderCellTextStyle}" />
                                             </Border>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
@@ -648,7 +774,7 @@
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <Border Style="{StaticResource OrderCellBorderStyle}">
-                                                <TextBlock Text="{Binding PaymentTypeDisplay}" Style="{StaticResource OrderCellTextStyle}" />
+                                                <TextBox Text="{Binding PaymentTypeDisplay, Mode=OneWay}" Style="{StaticResource OrderCellTextStyle}" />
                                             </Border>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
@@ -657,7 +783,7 @@
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <Border Style="{StaticResource OrderCellBorderStyle}">
-                                                <TextBlock Text="{Binding ExternalOrderNumber}" Style="{StaticResource OrderCellTextStyle}" />
+                                                <TextBox Text="{Binding ExternalOrderNumber, Mode=OneWay}" Style="{StaticResource OrderCellTextStyle}" />
                                             </Border>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
@@ -666,7 +792,7 @@
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <Border Style="{StaticResource OrderCellBorderStyle}">
-                                                <TextBlock Text="{Binding ExternalOrderStatus}" Style="{StaticResource OrderCellTextStyle}" />
+                                                <TextBox Text="{Binding ExternalOrderStatus, Mode=OneWay}" Style="{StaticResource OrderCellTextStyle}" />
                                             </Border>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
@@ -675,7 +801,7 @@
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <Border Style="{StaticResource OrderCellBorderStyle}">
-                                                <TextBlock Text="{Binding ExternalDeliveryName}" Style="{StaticResource OrderCellTextStyle}" />
+                                                <TextBox Text="{Binding ExternalDeliveryName, Mode=OneWay}" Style="{StaticResource OrderCellTextStyle}" />
                                             </Border>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
@@ -721,7 +847,7 @@
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <Border Style="{StaticResource OrderCellBorderStyle}">
-                                                <TextBlock Text="{Binding TrackingNumbers}" Style="{StaticResource OrderCellTextStyle}" TextTrimming="CharacterEllipsis" ToolTip="{Binding TrackingNumbers}" />
+                                                <TextBox Text="{Binding TrackingNumbers, Mode=OneWay}" Style="{StaticResource OrderCellTextStyle}" ToolTip="{Binding TrackingNumbers}" />
                                             </Border>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>

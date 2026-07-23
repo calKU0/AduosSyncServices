@@ -5,6 +5,7 @@ using AduosSyncServices.Contracts.Settings;
 using AduosSyncServices.Infrastructure.Data;
 using AduosSyncServices.Infrastructure.Settings;
 using Dapper;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
 using System.Data;
 
@@ -179,6 +180,27 @@ namespace AduosSyncServices.Infrastructure.Repositories
         }
 
         public async Task SaveAllegroOrder(AllegroOrder order)
+        {
+            // Deadlock (1205) safety net: order saves fan out in parallel and can also run
+            // concurrently with the products service writing to Products. The proper fix is the
+            // seek indexes + lock hints in migration 20260723_03, but if a save still gets picked
+            // as a deadlock victim, the whole (rolled-back) transaction is simply retried.
+            const int maxAttempts = 3;
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    await SaveAllegroOrderCore(order);
+                    return;
+                }
+                catch (SqlException ex) when (ex.Number == 1205 && attempt < maxAttempts)
+                {
+                    await Task.Delay(Random.Shared.Next(150, 400) * attempt);
+                }
+            }
+        }
+
+        private async Task SaveAllegroOrderCore(AllegroOrder order)
         {
             using var conn = _context.CreateConnection();
             conn.Open();

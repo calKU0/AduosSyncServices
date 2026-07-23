@@ -1,5 +1,6 @@
 using AduosSyncServices.Contracts.Interfaces;
 using AduosSyncServices.Contracts.Models;
+using AduosSyncServices.Infrastructure.Helpers;
 using AduosSyncServices.ServicesManager.Models;
 using System.Windows;
 
@@ -7,7 +8,7 @@ namespace AduosSyncServices.ServicesManager
 {
     public partial class OrderDetailsDialog : Window
     {
-        private record LineItemRow(string Code, string OfferName, int Quantity, string Unit, string PriceGross);
+        private record LineItemRow(string? ImageUrl, string Code, string OfferName, int Quantity, string Unit, string DeliveryTypeDisplay, string PriceGross);
 
         private readonly OrderRowViewModel _row;
         private readonly IGaskaOrderPlacementService _placementService;
@@ -38,7 +39,8 @@ namespace AduosSyncServices.ServicesManager
             }
             catch
             {
-                // Best-effort: fall through with productsById == null, showing "-" for Code/Jm.
+                // Best-effort: fall through with productsById == null, showing "-" for Code/Jm and no
+                // delivery type.
             }
 
             DgLineItems.ItemsSource = _row.Order.Items
@@ -47,10 +49,12 @@ namespace AduosSyncServices.ServicesManager
                     Product? product = null;
                     productsById?.TryGetValue(i.ProductId, out product);
                     return new LineItemRow(
+                        ImageHelper.GetFirstImageFile(ImageHelper.DefaultImagesFolder, i.ProductId),
                         product?.Code ?? "-",
                         i.OfferName,
                         i.Quantity,
                         product?.Unit ?? "-",
+                        OrderItemRowViewModel.FormatDeliveryType(product?.DeliveryType),
                         i.PriceGross);
                 })
                 .ToList();

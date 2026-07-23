@@ -1,4 +1,5 @@
 using AduosSyncServices.Contracts.Data.Enums;
+using AduosSyncServices.Infrastructure.Helpers;
 
 namespace Allegro.Aduos.Gaska.ProductsService.Constants
 {
@@ -6,6 +7,8 @@ namespace Allegro.Aduos.Gaska.ProductsService.Constants
     {
         public const IntegrationCompany Company = IntegrationCompany.Gaska;
         public const AllegroAccount Account = AllegroAccount.Aduos;
-        public const string ImagesFolder = @"C:\Program Files (x86)\Api Sync Services\Product_Images";
+        // Single source of truth lives next to ImageHelper so the ServicesManager UI reads from the
+        // same folder this service writes to.
+        public const string ImagesFolder = ImageHelper.DefaultImagesFolder;
     }
 }

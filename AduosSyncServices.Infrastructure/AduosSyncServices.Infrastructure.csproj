@@ -210,6 +210,12 @@
     <None Update="Migrations\20260717_08_AddOrderInternalStatuses.sql">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Migrations\20260723_02_SearchOrderableFromProducts.sql">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Migrations\20260723_03_FixOrderSyncDeadlocks.sql">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Resources\Images\logo.jpg">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
