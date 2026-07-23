@@ -325,7 +325,7 @@ namespace AduosSyncServices.Infrastructure.Services
                         DeliveryAddressId = address.AddressId,
                         DeliveryMethod = courier.GetDescription(),
                         DropshippingAmount = dropshippingAmount,
-                        CustomerNumber = order.RecipientFirstName + " " + order.RecipientLastName,
+                        CustomerNumber = BuildCustomerLabel(order),
                         Items = qtyByIntegrationId
                             .Select(kvp => new GaskaCreateOrderItemRequest { Id = kvp.Key, Qty = kvp.Value.ToString(CultureInfo.InvariantCulture) })
                             .ToList()
@@ -500,6 +500,20 @@ namespace AduosSyncServices.Infrastructure.Services
                     item.ExternalCourier = gaskaItem.RealizeDelivery;
                 }
             }
+        }
+
+        // Human-readable customer label sent to Gąska: recipient name, falling back to the company
+        // name (company purchases can have empty first/last name) and finally the Allegro id, so the
+        // label is never blank or a stray space.
+        private static string BuildCustomerLabel(AllegroOrder order)
+        {
+            var name = $"{order.RecipientFirstName} {order.RecipientLastName}".Trim();
+            if (!string.IsNullOrWhiteSpace(name))
+                return name;
+
+            return !string.IsNullOrWhiteSpace(order.RecipientCompanyName)
+                ? order.RecipientCompanyName.Trim()
+                : order.AllegroId;
         }
 
         private static string BuildShortageMessage(List<StockShortage> shortages) =>

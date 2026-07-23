@@ -346,9 +346,14 @@ namespace AduosSyncServices.ServicesManager
                 if (sender is OrderRowViewModel row)
                     SyncRowDetailsVisibility(row);
 
-                UpdateExpandAllButtonLabel();
+                // Label recomputation walks the whole list - during expand/collapse-all the caller
+                // updates it once after the loop instead of once per row.
+                if (!_isBulkExpandInProgress)
+                    UpdateExpandAllButtonLabel();
             }
         }
+
+        private bool _isBulkExpandInProgress;
 
         // DetailsVisibility must be set as a LOCAL value on the realised DataGridRow container - the
         // grid's explicit RowDetailsVisibilityMode outranks any RowStyle binding, so styles can't
@@ -381,19 +386,26 @@ namespace AduosSyncServices.ServicesManager
         private void OrderExpander_Click(object sender, RoutedEventArgs e)
         {
             // Same TwoWay-binding workaround as the selection checkbox: push the toggle state to the
-            // row explicitly.
+            // row explicitly. The label update happens via the row's PropertyChanged handler.
             if (sender is System.Windows.Controls.Primitives.ToggleButton { DataContext: OrderRowViewModel row } toggle)
                 row.IsExpanded = toggle.IsChecked == true;
-
-            UpdateExpandAllButtonLabel();
         }
 
         private void BtnToggleExpandAll_Click(object sender, RoutedEventArgs e)
         {
             // Expand everything unless every order is already expanded - then collapse everything.
             var expandAll = _orders.Any(o => !o.IsExpanded);
-            foreach (var row in _orders)
-                row.IsExpanded = expandAll;
+
+            _isBulkExpandInProgress = true;
+            try
+            {
+                foreach (var row in _orders)
+                    row.IsExpanded = expandAll;
+            }
+            finally
+            {
+                _isBulkExpandInProgress = false;
+            }
 
             UpdateExpandAllButtonLabel();
         }

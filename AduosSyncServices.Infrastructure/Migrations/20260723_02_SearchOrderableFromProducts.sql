@@ -14,7 +14,8 @@ BEGIN
     SET NOCOUNT ON;
 
     -- Treat LIKE wildcards typed by the user literally ("%", "_", "[").
-    DECLARE @EscapedTerm NVARCHAR(220) = REPLACE(REPLACE(REPLACE(REPLACE(@SearchTerm,
+    -- 400: every escaped character doubles, so a 200-char term can grow to at most 400 chars.
+    DECLARE @EscapedTerm NVARCHAR(400) = REPLACE(REPLACE(REPLACE(REPLACE(@SearchTerm,
         '\', '\\'),
         '%', '\%'),
         '_', '\_'),
@@ -37,6 +38,7 @@ BEGIN
     WHERE p.IntegrationCompany = @IntegrationCompany
       AND p.IsArchived = 0
       AND (p.Name LIKE '%' + @EscapedTerm + '%' ESCAPE '\' OR p.Code LIKE '%' + @EscapedTerm + '%' ESCAPE '\')
-    ORDER BY p.Name
+    -- p.Id tie-breaker keeps OFFSET paging deterministic when names repeat.
+    ORDER BY p.Name, p.Id
     OFFSET @Offset ROWS FETCH NEXT @MaxResults ROWS ONLY;
 END
