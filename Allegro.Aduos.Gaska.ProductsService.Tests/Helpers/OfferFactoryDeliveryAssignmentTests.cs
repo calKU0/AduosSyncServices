@@ -38,7 +38,9 @@ public class OfferFactoryDeliveryAssignmentTests
 
         var result = OfferFactory.ResolveHandlingTimeForTests(product, deliveries, DeliveryMatchMode.Price);
 
-        Assert.Equal("PT3D", result);
+        // DeliveryHandlingTime.P3D -> "P3D" (ISO-8601 3 days). The matched rule is STANDARD-800
+        // because its 800 net-price threshold is the highest that still covers the 850 net price.
+        Assert.Equal("P3D", result);
     }
 
     [Fact]
