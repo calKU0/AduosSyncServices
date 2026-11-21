@@ -4,6 +4,7 @@
     {
         Task SyncProducts(CancellationToken ct = default);
 
-        Task SyncProductDetails(CancellationToken ct = default);
+        /// <returns>False when the product list could not be loaded, so the run should be retried later.</returns>
+        Task<bool> SyncProductDetails(CancellationToken ct = default);
     }
 }

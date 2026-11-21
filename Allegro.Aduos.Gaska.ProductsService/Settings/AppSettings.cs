@@ -10,6 +10,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Settings
         public decimal MinProductPriceNet { get; set; }
         public int LogsExpirationDays { get; set; }
         public int FetchIntervalMinutes { get; set; }
+        public int ProductsChangedDaysBack { get; set; } = 1;
         public DeliveryMatchMode DeliveryMatchMode { get; set; } = DeliveryMatchMode.Weight;
         public List<DeliverySettings> Deliveries { get; set; } = new List<DeliverySettings>();
     }

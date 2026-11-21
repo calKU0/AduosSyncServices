@@ -19,6 +19,7 @@ namespace AduosSyncServices.ServicesManager.Helpers
             new ConfigField { Key = "AppSettings:MinProductPriceNet", Label = "Minimalna cena netto produktu (w Gąsce)", Group = "Ustawienia serwisu", FieldType = ConfigFieldType.Decimal },
             new ConfigField { Key = "AppSettings:LogsExpirationDays", Label = "Ilość dni zachowania logów", Group = "Ustawienia serwisu", FieldType = ConfigFieldType.Int },
             new ConfigField { Key = "AppSettings:FetchIntervalMinutes", Label = "Co ile wywoływać synchronizację (min)", Group = "Ustawienia serwisu", FieldType = ConfigFieldType.Int },
+            new ConfigField { Key = "AppSettings:ProductsChangedDaysBack", Label = "Ile dni wstecz pobierać zmienione produkty", Group = "Ustawienia serwisu", FieldType = ConfigFieldType.Int },
 
             // Allegro Settings
             new ConfigField { Key = "AllegroSettings:AllegroSafetyMeasures", Label = "Tekst bezpieczeństwa", Group = "Ustawienia Allegro" },
