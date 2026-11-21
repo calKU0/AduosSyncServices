@@ -8,6 +8,7 @@ using Allegro.Aduos.Gaska.ProductsService.Helpers;
 using Allegro.Aduos.Gaska.ProductsService.Settings;
 using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -26,6 +27,18 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
         private readonly AppSettings _appSettings;
         private readonly PriceSettings _priceSettings;
         private readonly AllegroSettings _allegroSettings;
+
+        /// <summary>
+        /// Zliczanie błędów Allegro wg kodu w obrębie jednego kroku. Pojedyncze błędy nadal trafiają do logu,
+        /// a podsumowanie pokazuje, co faktycznie blokuje wystawianie.
+        /// </summary>
+        private readonly ConcurrentDictionary<string, int> _errorCounts = new();
+
+        /// <summary>
+        /// Ile zdjęć zmieści się w galerii oferty danego produktu - ustalone po odrzuceniu "You can add up to 16 images".
+        /// Bez tego każdy cykl zaczynałby od odrzuconego zapytania. Żyje tyle, co proces.
+        /// </summary>
+        private static readonly ConcurrentDictionary<string, int> GalleryLimits = new(StringComparer.OrdinalIgnoreCase);
 
         private readonly JsonSerializerOptions _options = new JsonSerializerOptions
         {
@@ -246,6 +259,19 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                 var offers = await _offerRepo.GetOffersToUpdate(ct);
                 var allegroCategories = (await _categoryRepo.GetAllegroCategories(ct)).ToList();
 
+                if (offers == null || !offers.Any())
+                {
+                    _logger.LogInformation("No offers to update.");
+                    return;
+                }
+
+                _logger.LogInformation("Offers to update: {Count}.", offers.Count());
+
+                int updated = 0;
+                int failed = 0;
+                int fixedData = 0;
+                int skipped = 0;
+
                 // Limit concurrency to avoid rate-limits (tune this number)
                 var parallelOptions = new ParallelOptions
                 {
@@ -266,23 +292,46 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
 
                             if (images == null || !images.Any())
                             {
+                                Interlocked.Increment(ref skipped);
                                 return;
                             }
 
                             offer.Product.AllegroImages = images;
                         }
+
+                        ApplyGalleryLimit(offer.Product);
+
                         var offerDto = OfferFactory.PatchOffer(offer, allegroCategories, _appSettings, _allegroSettings, _priceSettings);
                         var response = await _apiClient.UpdateOffer(offer.Id, offerDto, token);
-
                         var body = await response.Content.ReadAsStringAsync(token);
 
-                        await LogAllegroResponse(offer.Product, response, body, true, offer.Id);
+                        if (ShrinkGalleryAfterRejection(offer.Product, response, body))
+                        {
+                            offerDto = OfferFactory.PatchOffer(offer, allegroCategories, _appSettings, _allegroSettings, _priceSettings);
+                            response = await _apiClient.UpdateOffer(offer.Id, offerDto, token);
+                            body = await response.Content.ReadAsStringAsync(token);
+                        }
+
+                        var dataFixed = await LogAllegroResponse(offer.Product, response, body, true, offer.Id);
+
+                        if (response.IsSuccessStatusCode)
+                            Interlocked.Increment(ref updated);
+                        else if (dataFixed)
+                            Interlocked.Increment(ref fixedData);
+                        else
+                            Interlocked.Increment(ref failed);
                     }
                     catch (Exception ex)
                     {
+                        Interlocked.Increment(ref failed);
                         _logger.LogError(ex, "Exception while updating offer for {Code}", offer.Product.Code);
                     }
                 });
+
+                _logger.LogInformation(
+                    "Offers updated: {Updated}, failed: {Failed}, skipped (no images): {Skipped}, data fixed (retry next cycle): {Fixed}.",
+                    updated, failed, skipped, fixedData);
+                LogErrorSummary("Offers update");
             }
             catch (Exception ex)
             {
@@ -303,6 +352,16 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                     return;
                 }
 
+                _logger.LogInformation(
+                    "Products to create offers for: {Count} (min stock {MinStock}, min net price {MinPrice}).",
+                    products.Count(), _appSettings.MinProductStock, _appSettings.MinProductPriceNet);
+
+                int created = 0;
+                int failed = 0;
+                int fixedData = 0;
+                int skipped = 0;
+                int noDelivery = 0;
+
                 await Parallel.ForEachAsync(products, new ParallelOptions
                 {
                     CancellationToken = ct,
@@ -312,23 +371,57 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                 {
                     try
                     {
-                        product.AllegroImages = await ImportImages(product, token);
-                        if (product.AllegroImages == null || !product.AllegroImages.Any())
+                        // Bez pasującego cennika nie ma czym wysłać - Allegro i tak odrzuciłoby ofertę.
+                        // Sprawdzamy przed wgraniem zdjęć, żeby nie wysyłać ich na próżno.
+                        if (!OfferFactory.HasDeliveryRule(product, _appSettings))
                         {
+                            Interlocked.Increment(ref noDelivery);
+                            _logger.LogDebug("No delivery price list fits {Code} - offer not created.", product.Code);
                             return;
                         }
+
+                        product.AllegroImages = await ImportImages(product, token);
+
+                        // Allegro wymaga co najmniej jednego zdjęcia - produkt czeka na kolejny cykl.
+                        if (product.AllegroImages == null || !product.AllegroImages.Any())
+                        {
+                            Interlocked.Increment(ref skipped);
+                            return;
+                        }
+
+                        ApplyGalleryLimit(product);
+
                         var offer = OfferFactory.BuildOffer(product, allegroCategories, _appSettings, _allegroSettings, _priceSettings);
                         var response = await _apiClient.CreateOffer(offer, token);
-                        var body = await response.Content.ReadAsStringAsync();
-                        await LogAllegroResponse(product, response, body);
+                        var body = await response.Content.ReadAsStringAsync(token);
+
+                        if (ShrinkGalleryAfterRejection(product, response, body))
+                        {
+                            offer = OfferFactory.BuildOffer(product, allegroCategories, _appSettings, _allegroSettings, _priceSettings);
+                            response = await _apiClient.CreateOffer(offer, token);
+                            body = await response.Content.ReadAsStringAsync(token);
+                        }
+
+                        var dataFixed = await LogAllegroResponse(product, response, body);
+
+                        if (response.IsSuccessStatusCode)
+                            Interlocked.Increment(ref created);
+                        else if (dataFixed)
+                            Interlocked.Increment(ref fixedData);
+                        else
+                            Interlocked.Increment(ref failed);
                     }
                     catch (Exception ex)
                     {
+                        Interlocked.Increment(ref failed);
                         _logger.LogError(ex, "Exception while creating offer for {Code}", product.Code);
                     }
                 });
 
-                _logger.LogInformation("Finished creating Allegro offers.");
+                _logger.LogInformation(
+                    "Offers created: {Created}, failed: {Failed}, skipped (no images): {Skipped}, no matching delivery price list: {NoDelivery}, data fixed (retry next cycle): {Fixed}.",
+                    created, failed, skipped, noDelivery, fixedData);
+                LogErrorSummary("Offers creation");
             }
             catch (Exception ex)
             {
@@ -336,167 +429,327 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
             }
         }
 
-        private async Task LogAllegroResponse(Product product, HttpResponseMessage response, string body, bool isUpdate = false, string offerId = null)
+        // ---------------------------------------------------------------- podsumowanie błędów
+
+        private void CountError(string? code) =>
+            _errorCounts.AddOrUpdate(string.IsNullOrWhiteSpace(code) ? "-" : code, 1, (_, current) => current + 1);
+
+        private void LogErrorSummary(string step)
+        {
+            if (_errorCounts.IsEmpty)
+                return;
+
+            var summary = string.Join(", ", _errorCounts
+                .OrderByDescending(x => x.Value)
+                .Select(x => $"{x.Key}: {x.Value}"));
+
+            _logger.LogWarning("{Step} - error breakdown: {Summary}", step, summary);
+            _errorCounts.Clear();
+        }
+
+        // ---------------------------------------------------------------- limit galerii
+
+        /// <summary>Przycina zdjęcia produktu do limitu zapamiętanego po wcześniejszym odrzuceniu galerii.</summary>
+        private static void ApplyGalleryLimit(Product product)
+        {
+            if (product.AllegroImages == null || !GalleryLimits.TryGetValue(product.Code, out var limit))
+                return;
+
+            product.AllegroImages = TrimImages(product.AllegroImages, limit);
+        }
+
+        /// <summary>
+        /// Odrzucenie za za dużą galerię ("GallerySizeException - You can add up to 16 images"). Zwraca limit
+        /// z komunikatu albo <c>null</c>, gdy to inny błąd - w tym "przynajmniej 1 zdjęcie", czyli galeria pusta.
+        /// </summary>
+        internal static int? GalleryTooLargeLimit(string body)
+        {
+            if (string.IsNullOrEmpty(body) || !body.Contains("GallerySizeException", StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            var match = Regex.Match(body, @"(?:up to|maksymalnie|do)\s+(\d+)\s+(?:images|zdję)", RegexOptions.IgnoreCase);
+
+            if (match.Success)
+                return int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+
+            return body.Contains("przynajmniej", StringComparison.OrdinalIgnoreCase) || body.Contains("at least", StringComparison.OrdinalIgnoreCase)
+                ? null
+                : OfferFactory.MaxGalleryImages;
+        }
+
+        /// <summary>
+        /// Ile zdjęć wysłać po odrzuceniu galerii. Allegro dolicza do galerii zdjęcia produktu z katalogu,
+        /// których liczby nie znamy - zdejmujemy więc co najmniej jedno, a kolejne odrzucenie zmniejszy limit dalej.
+        /// Zawsze zostaje co najmniej jedno zdjęcie.
+        /// </summary>
+        internal static int ReducedGallerySize(int ownImages, int limit)
+        {
+            var size = Math.Min(limit, ownImages - 1);
+            return Math.Max(size, 1);
+        }
+
+        /// <summary>Pierwsze <paramref name="size"/> zdjęć produktu (bez powtórzeń), co najmniej jedno.</summary>
+        internal static List<AllegroImages> TrimImages(List<AllegroImages> images, int size) =>
+            images.GroupBy(i => i.Url).Select(g => g.First()).Take(Math.Max(size, 1)).ToList();
+
+        /// <summary>
+        /// Po odrzuceniu za za dużą galerię przycina zdjęcia produktu i zapamiętuje limit (do restartu procesu).
+        /// Zwraca true, gdy jest sens od razu ponowić zapytanie z mniejszą galerią.
+        /// </summary>
+        private bool ShrinkGalleryAfterRejection(Product product, HttpResponseMessage response, string body)
+        {
+            if (response.IsSuccessStatusCode || product.AllegroImages == null)
+                return false;
+
+            var limit = GalleryTooLargeLimit(body);
+            var ownImages = product.AllegroImages.Select(i => i.Url).Distinct().Count();
+
+            if (limit == null || ownImages <= 1)
+                return false;
+
+            var size = ReducedGallerySize(ownImages, limit.Value);
+
+            if (size >= ownImages)
+                return false;
+
+            GalleryLimits[product.Code] = size;
+            product.AllegroImages = TrimImages(product.AllegroImages, size);
+
+            _logger.LogWarning(
+                "Gallery of {Code} is over the Allegro limit of {Limit} ({Own} images) - retrying with {Size} images.",
+                product.Code, limit, ownImages, size);
+
+            return true;
+        }
+
+        /// <summary>Skrócona treść odpowiedzi do logu.</summary>
+        private static string Shorten(string? body, int maxLength = 1000) =>
+            string.IsNullOrEmpty(body) || body.Length <= maxLength
+                ? body ?? string.Empty
+                : body[..maxLength] + "...";
+
+        /// <summary>"Przedmiot, który chcesz wystawić znajduje się już na liście Twoich aktywnych ofert..."</summary>
+        internal static bool IsDuplicateActiveOffer(string userMessage, string message) =>
+            userMessage.Contains("już na liście Twoich aktywnych ofert", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("already on the list of your active offers", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>Zwraca true, gdy błąd został naprawiony w danych produktu i ma sens kolejna próba (w następnym cyklu).</summary>
+        private async Task<bool> LogAllegroResponse(Product product, HttpResponseMessage response, string body, bool isUpdate = false, string offerId = null)
         {
             var action = isUpdate ? "updated" : "created";
 
             switch ((int)response.StatusCode)
             {
                 case 200:
-                    _logger.LogInformation($"Offer {action} successfully for {product.Code}");
-                    await _imageRepo.MarkImagesAsConnectedAsync(product.Id, new CancellationToken());
-                    break;
-
                 case 201:
-                    _logger.LogInformation($"Offer {action} successfully for {product.Code}");
-                    await _imageRepo.MarkImagesAsConnectedAsync(product.Id, new CancellationToken());
-                    break;
+                    _logger.LogInformation("Offer {Action} successfully for {Code}", action, product.Code);
+                    await _imageRepo.MarkImagesAsConnectedAsync(product.Id, CancellationToken.None);
+                    return false;
 
                 case 202:
-                    _logger.LogInformation($"Offer {action} successfully but still processing for {product.Code}");
-                    await _imageRepo.MarkImagesAsConnectedAsync(product.Id, new CancellationToken());
-                    break;
+                    _logger.LogInformation("Offer {Action} successfully but still processing for {Code}", action, product.Code);
+                    await _imageRepo.MarkImagesAsConnectedAsync(product.Id, CancellationToken.None);
+                    return false;
 
                 case 400:
                 case 422:
                 case 433:
                     await _imageRepo.DeleteNotConnectedImages(product.Id, CancellationToken.None);
-                    await LogAllegroErrors(product, response, body, isUpdate, offerId);
-                    break;
+                    return await LogAllegroErrors(product, response, body, isUpdate, offerId);
 
                 case 401:
                     await _imageRepo.DeleteNotConnectedImages(product.Id, CancellationToken.None);
-                    _logger.LogError($"Unauthorized (401). Check token for product {product.Code} when {action} offer.");
-                    break;
+                    CountError("HTTP 401");
+                    _logger.LogError("Unauthorized (401). Check token for product {Code} when {Action} offer. Response: {Body}", product.Code, action, Shorten(body));
+                    return false;
 
                 case 403:
                     await _imageRepo.DeleteNotConnectedImages(product.Id, CancellationToken.None);
-                    _logger.LogError($"Forbidden (403). No permission for {action} offer for {product.Code}.");
-                    break;
+                    CountError("HTTP 403");
+                    _logger.LogError("Forbidden (403) while {Action} offer for {Code}. Response: {Body}", action, product.Code, Shorten(body));
+                    return false;
 
                 case 404:
                     await _imageRepo.DeleteNotConnectedImages(product.Id, CancellationToken.None);
-                    _logger.LogWarning("Offer not found in Allegro. Deleting from database.");
-                    await _offerRepo.DeleteOffer(offerId, CancellationToken.None);
-                    break;
+                    CountError("HTTP 404");
+                    _logger.LogWarning("Offer {OfferId} not found in Allegro ({Code}). Deleting from database.", offerId, product.Code);
+                    if (!string.IsNullOrEmpty(offerId))
+                        await _offerRepo.DeleteOffer(offerId, CancellationToken.None);
+                    return false;
+
                 case 429:
-                    break;
+                    CountError("HTTP 429");
+                    return false;
 
                 default:
                     await _imageRepo.DeleteNotConnectedImages(product.Id, CancellationToken.None);
-                    _logger.LogError($"Unexpected status {(int)response.StatusCode} ({response.StatusCode}) while {action} offer for {product.Code}. Response: {body}");
-                    break;
+                    CountError($"HTTP {(int)response.StatusCode}");
+                    _logger.LogError("Unexpected status {Status} ({StatusCode}) while {Action} offer for {Code}. Response: {Body}", (int)response.StatusCode, response.StatusCode, action, product.Code, Shorten(body));
+                    return false;
             }
         }
 
-        private async Task LogAllegroErrors(Product product, HttpResponseMessage response, string body, bool isUpdate = false, string offerId = null)
+        /// <summary>
+        /// Część błędów Allegro naprawiamy w danych produktu (kategoria, parametr, zestaw kompatybilności).
+        /// Zwraca true tylko wtedy, gdy naprawione zostały wszystkie błędy z odpowiedzi - przy choć jednym
+        /// nienaprawionym kolejna próba z tymi samymi danymi skończy się tak samo.
+        /// </summary>
+        private async Task<bool> LogAllegroErrors(Product product, HttpResponseMessage response, string body, bool isUpdate = false, string offerId = null)
         {
             var action = isUpdate ? "updating" : "creating";
+
+            AllegroErrorResponse? errorResponse = null;
             try
             {
-                var errorResponse = JsonSerializer.Deserialize<AllegroErrorResponse>(body, _options);
-                if (errorResponse?.Errors != null)
-                {
-                    foreach (var err in errorResponse.Errors)
-                    {
-                        // Special handling for category mismatch
-                        if (((err.Code?.Contains("ProductConstraintViolationException", StringComparison.OrdinalIgnoreCase) == true && (err.UserMessage ?? "").Contains("kategorii produktu", StringComparison.OrdinalIgnoreCase)) || err.Code?.Contains("CATEGORY_MISMATCH", StringComparison.OrdinalIgnoreCase) == true) && !string.IsNullOrEmpty(err.UserMessage))
-                        {
-                            var correctCategoryId = ExtractCorrectCategoryId(err.UserMessage);
-                            if (!string.IsNullOrEmpty(correctCategoryId))
-                            {
-                                await _productRepo.UpdateProductAllegroCategory(product.Id, Convert.ToInt32(correctCategoryId), CancellationToken.None);
-                                _logger.LogInformation("Updated category for {Code} to {CategoryId}", product.Code, correctCategoryId);
-                            }
-                        }
-                        else if (err.UserMessage.Contains("nieznany producent"))
-                        {
-                            await _parameterRepo.UpdateParameter(product.Id, 127415, "JAG", CancellationToken.None);
-                            await _parameterRepo.UpdateParameter(product.Id, 247835, "JAG", CancellationToken.None);
-                        }
-                        else if (
-                            (err.Code == "PARAMETER_MISMATCH" && !string.IsNullOrEmpty(err.UserMessage)) ||
-                            (err.Code == "ProductConstraintViolationException.DataIntegrity" &&
-                             err.Message.Contains("Incorrect value of the") &&
-                             err.Message.Contains("parameter for the offered product"))
-                        )
-                        {
-                            _logger.LogInformation("Offer {Action} error for {Name}: Code={Code}, Message={Message}", action, product.Code, err.Code, err.Message);
-                            // Try to extract from either UserMessage or Message
-                            var sourceMessage = !string.IsNullOrEmpty(err.UserMessage) ? err.UserMessage : err.Message;
-
-                            var correctValue = ExtractCorrectParameterValue(sourceMessage);
-                            var parameterId = ExtractParameterIdFromConstraintMessage(err.Message);
-
-                            if (!string.IsNullOrEmpty(parameterId) && !string.IsNullOrEmpty(correctValue))
-                            {
-                                await _parameterRepo.UpdateParameter(product.Id, Convert.ToInt32(parameterId), correctValue, CancellationToken.None);
-                                _logger.LogInformation("Updated parameter {ParameterId} for {Code} to '{CorrectValue}'", parameterId, product.Code, correctValue);
-                            }
-                        }
-                        else if (err.Code == "ProductValidationException"
-                             && !string.IsNullOrEmpty(err.UserMessage)
-                             && err.UserMessage.Contains("Tworzenie produktu z wartością", StringComparison.OrdinalIgnoreCase)
-                             && err.UserMessage.Contains("parametrze Producent części", StringComparison.OrdinalIgnoreCase))
-                        {
-                            await _parameterRepo.UpdateParameter(product.Id, 127415, "JAG", CancellationToken.None);
-                            await _parameterRepo.UpdateParameter(product.Id, 247835, "JAG", CancellationToken.None);
-
-                            _logger.LogInformation("Updated parameter Producent części to 'JAG' for {Code}", product.Code);
-                        }
-                        else if (err.Code == "Code=ConstraintViolationException.ValidProductization")
-                        {
-                            // TODO
-                        }
-                        else if (err.UserMessage.Contains(@"Podany adres obrazka jest nieprawidłowy."))
-                        {
-                            await _imageRepo.DeleteProductImagesAsync(product.Id, CancellationToken.None);
-                        }
-                        else if (err.UserMessage.Contains(@"bez wybierania wartości niejednoznacznej"))
-                        {
-                        }
-                        else if (err.Message.Contains(@"The type of this ""Compatible with"" "))
-                        {
-                            await _productRepo.UpdateCompatibilitySet(product.Id, false, CancellationToken.None);
-                        }
-                        else if (err.Code == "ParameterNameNotFoundException" && !string.IsNullOrEmpty(err.UserMessage))
-                        {
-                            var parameterName = ExtractParameterNameFromNotFoundMessage(err.UserMessage);
-
-                            if (!string.IsNullOrEmpty(parameterName))
-                            {
-                                await _parameterRepo.DeleteParameter(parameterName, product.Id, CancellationToken.None);
-
-                                _logger.LogInformation(
-                                    "Deleted parameter '{ParameterName}' for product {Code} because it does not exist in category",
-                                    parameterName,
-                                    product.Code);
-                            }
-                        }
-                        else if (err.Code == "OfferNotFoundException" && response.StatusCode == System.Net.HttpStatusCode.NotFound)
-                        {
-                            _logger.LogWarning("Offer not found in Allegro. Deleting from database.");
-                            await _offerRepo.DeleteOffer(offerId, CancellationToken.None);
-                        }
-                        else
-                        {
-                            _logger.LogError("Offer {Action} error for {ProductCode}: Code={Code}, Message={Message}", action, product.Code, err.Code, err.Message);
-                        }
-                    }
-                }
-                else
-                {
-                    _logger.LogError($"Offer {action} error {response.StatusCode} for {product.Code}: {body}");
-                }
+                errorResponse = JsonSerializer.Deserialize<AllegroErrorResponse>(body, _options);
             }
-            catch (Exception exParse)
+            catch (JsonException)
+            {
+                // obsłużone niżej - zalogujemy surową treść
+            }
+
+            if (errorResponse?.Errors == null || errorResponse.Errors.Count == 0)
             {
                 if (body.Contains(@"The type of this ""Compatible with"" "))
                 {
                     await _productRepo.UpdateCompatibilitySet(product.Id, false, CancellationToken.None);
+                    return true;
                 }
-                _logger.LogError(exParse, $"Failed to parse Allegro error ({response.StatusCode}) while {action} offer for {product.Code}. Body={body}");
+
+                CountError($"HTTP {(int)response.StatusCode}");
+                _logger.LogError("Offer {Action} error {Status} for {Code}: {Body}", action, (int)response.StatusCode, product.Code, Shorten(body));
+                return false;
             }
+
+            var fixedCount = 0;
+            var unfixedCount = 0;
+
+            foreach (var err in errorResponse.Errors)
+            {
+                var code = err.Code ?? string.Empty;
+                var userMessage = err.UserMessage ?? string.Empty;
+                var message = err.Message ?? string.Empty;
+                var isFixed = false;
+
+                try
+                {
+                    isFixed = await TryFixProductData(product, response, offerId, action, code, userMessage, message);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Fixing product data after Allegro error {ErrorCode} failed for {Code}.", code, product.Code);
+                }
+
+                if (isFixed)
+                {
+                    fixedCount++;
+                    continue;
+                }
+
+                unfixedCount++;
+
+                if (IsDuplicateActiveOffer(userMessage, message))
+                {
+                    // Oferta już istnieje na koncie, ale nie ma jej jeszcze w bazie - pojawi się po synchronizacji ofert.
+                    CountError("DuplicateActiveOffer");
+                    _logger.LogWarning("Offer {Action} skipped for {Code}: an active offer for this product already exists in Allegro - it will be picked up by the next offer sync.", action, product.Code);
+                    continue;
+                }
+
+                CountError(string.IsNullOrEmpty(code) ? "-" : code);
+                _logger.LogError(
+                    "Offer {Action} error for {ProductCode} (offer {OfferId}, category {CategoryId}): Code={Code}, Message={Message}",
+                    action, product.Code, offerId ?? "-", product.DefaultAllegroCategory, code, string.IsNullOrWhiteSpace(userMessage) ? message : userMessage);
+            }
+
+            if (fixedCount > 0 && unfixedCount > 0)
+            {
+                _logger.LogWarning(
+                    "Offer {Action} for {Code}: fixed {Fixed} of {Total} errors, {Unfixed} need manual attention.",
+                    action, product.Code, fixedCount, fixedCount + unfixedCount, unfixedCount);
+            }
+
+            return fixedCount > 0 && unfixedCount == 0;
+        }
+
+        /// <summary>Zwraca true, gdy błąd został naprawiony w danych produktu (albo obsłużony i nie jest błędem).</summary>
+        private async Task<bool> TryFixProductData(Product product, HttpResponseMessage response, string offerId, string action, string code, string userMessage, string message)
+        {
+            // Zła kategoria - Allegro podaje właściwą w komunikacie.
+            if ((code.Contains("ProductConstraintViolationException", StringComparison.OrdinalIgnoreCase) && userMessage.Contains("kategorii produktu", StringComparison.OrdinalIgnoreCase)
+                 || code.Contains("CATEGORY_MISMATCH", StringComparison.OrdinalIgnoreCase))
+                && !string.IsNullOrEmpty(userMessage))
+            {
+                var correctCategoryId = ExtractCorrectCategoryId(userMessage);
+                if (string.IsNullOrEmpty(correctCategoryId))
+                    return false;
+
+                await _productRepo.UpdateProductAllegroCategory(product.Id, Convert.ToInt32(correctCategoryId), CancellationToken.None);
+                _logger.LogInformation("Updated category for {Code} to {CategoryId}", product.Code, correctCategoryId);
+                return true;
+            }
+
+            if (userMessage.Contains("nieznany producent")
+                || (code == "ProductValidationException"
+                    && userMessage.Contains("Tworzenie produktu z wartością", StringComparison.OrdinalIgnoreCase)
+                    && userMessage.Contains("parametrze Producent części", StringComparison.OrdinalIgnoreCase)))
+            {
+                await _parameterRepo.UpdateParameter(product.Id, 127415, "JAG", CancellationToken.None);
+                await _parameterRepo.UpdateParameter(product.Id, 247835, "JAG", CancellationToken.None);
+                _logger.LogInformation("Updated parameter Producent części to 'JAG' for {Code}", product.Code);
+                return true;
+            }
+
+            if ((code == "PARAMETER_MISMATCH" && !string.IsNullOrEmpty(userMessage)) ||
+                (code == "ProductConstraintViolationException.DataIntegrity" &&
+                 message.Contains("Incorrect value of the") &&
+                 message.Contains("parameter for the offered product")))
+            {
+                var sourceMessage = !string.IsNullOrEmpty(userMessage) ? userMessage : message;
+                var correctValue = ExtractCorrectParameterValue(sourceMessage);
+                var parameterId = ExtractParameterIdFromConstraintMessage(message);
+
+                if (string.IsNullOrEmpty(parameterId) || string.IsNullOrEmpty(correctValue))
+                    return false;
+
+                await _parameterRepo.UpdateParameter(product.Id, Convert.ToInt32(parameterId), correctValue, CancellationToken.None);
+                _logger.LogInformation("Updated parameter {ParameterId} for {Code} to '{CorrectValue}'", parameterId, product.Code, correctValue);
+                return true;
+            }
+
+            if (userMessage.Contains("Podany adres obrazka jest nieprawidłowy."))
+            {
+                // Zdjęcia zostaną wgrane od nowa w kolejnym cyklu.
+                await _imageRepo.DeleteProductImagesAsync(product.Id, CancellationToken.None);
+                return true;
+            }
+
+            if (message.Contains(@"The type of this ""Compatible with"" "))
+            {
+                await _productRepo.UpdateCompatibilitySet(product.Id, false, CancellationToken.None);
+                return true;
+            }
+
+            if (code == "ParameterNameNotFoundException" && !string.IsNullOrEmpty(userMessage))
+            {
+                var parameterName = ExtractParameterNameFromNotFoundMessage(userMessage);
+                if (string.IsNullOrEmpty(parameterName))
+                    return false;
+
+                await _parameterRepo.DeleteParameter(parameterName, product.Id, CancellationToken.None);
+                _logger.LogInformation("Deleted parameter '{ParameterName}' for product {Code} because it does not exist in category", parameterName, product.Code);
+                return true;
+            }
+
+            if (code == "OfferNotFoundException" && response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                _logger.LogWarning("Offer not found in Allegro. Deleting from database.");
+                if (!string.IsNullOrEmpty(offerId))
+                    await _offerRepo.DeleteOffer(offerId, CancellationToken.None);
+                return true;
+            }
+
+            return false;
         }
 
         private string ExtractParameterNameFromNotFoundMessage(string message)
@@ -608,31 +861,6 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                 .OrderBy(x => x.FileName, StringComparer.OrdinalIgnoreCase)
                 .Select(x => x.Url)
                 .ToList();
-
-            // Upload logo LAST
-            var logoPath = Path.Combine(
-                AppDomain.CurrentDomain.BaseDirectory,
-                "Resources",
-                "Images",
-                "logo.jpg");
-
-            try
-            {
-                if (File.Exists(logoPath))
-                {
-                    var logoBytes = await File.ReadAllBytesAsync(logoPath, ct);
-                    var logoResult = await _apiClient.UploadImage(logoBytes, "image/jpeg", ct);
-
-                    if (!string.IsNullOrWhiteSpace(logoResult?.Location))
-                    {
-                        orderedUrls.Add(logoResult.Location);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to upload logo image.");
-            }
 
             _logger.LogInformation("Imported {Count} images for product {Code}", orderedUrls.Count, product.Code);
 

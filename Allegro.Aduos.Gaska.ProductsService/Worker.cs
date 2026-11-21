@@ -85,7 +85,9 @@ public class Worker : BackgroundService
             await MeasureStepAsync("Allegro offers sync", () => offerService.SyncAllegroOffers());
             await MeasureStepAsync("Allegro offers details sync", () => offerService.SyncAllegroOffersDetails());
 
-            if (_lastProductDetailsSyncDate.Date < DateTime.Today && DateTime.Now.Hour >= 2 && DateTime.Now.Hour <= 10)
+            if (_lastProductDetailsSyncDate.Date < DateTime.Today
+                //&& DateTime.Now.Hour >= 2 && DateTime.Now.Hour <= 10
+                )
             {
                 await MeasureStepAsync("Detailed product sync", () => gaskaApiService.SyncProductDetails());
                 _lastProductDetailsSyncDate = DateTime.Today;

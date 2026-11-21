@@ -25,6 +25,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
         private readonly IGaskaApiClient _gaskaApiClient;
         private readonly List<int> _categoriesIds;
         private IOptions<GaskaApiCredentials> _apiSettings;
+        private readonly IOptions<AppSettings> _appSettings;
 
         public GaskaApiService(IProductRepository productRepo, IImageRepository imageRepo, IGaskaApiClient gaskaApiClient, IOptions<GaskaApiCredentials> apiSettings, IOptions<AppSettings> appSettings, ILogger<GaskaApiService> logger)
         {
@@ -40,6 +41,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
                 ?? new List<int>();
 
             _apiSettings = apiSettings;
+            _appSettings = appSettings;
             _logger = logger;
         }
 
@@ -171,7 +173,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
 
                     if (remainingSlots > 0)
                     {
-                        var productsChanged = await GetProductsChanged(DateTime.Now.AddDays(-1), ct);
+                        var productsChanged = await GetProductsChanged(DateTime.Now.AddDays(-_appSettings.Value.ProductsChangedDaysBack), ct);
                         _logger.LogInformation("Found {Count} products changed", productsChanged?.Count ?? 0);
                         if (productsChanged != null && productsChanged.Any())
                         {

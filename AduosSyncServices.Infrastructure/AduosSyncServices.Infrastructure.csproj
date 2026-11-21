@@ -216,6 +216,15 @@
     <None Update="Migrations\20260723_03_FixOrderSyncDeadlocks.sql">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Migrations\20261121_01_ForceDeliveryTypeByProductName.sql">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Migrations\20261121_02_PrioritizeInStockProductsForDetailUpdate.sql">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Migrations\20261121_03_RemoveLogoSeparatorImages.sql">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Resources\Images\logo.jpg">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

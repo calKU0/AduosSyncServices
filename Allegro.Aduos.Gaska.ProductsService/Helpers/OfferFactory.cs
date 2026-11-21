@@ -5,12 +5,14 @@ using AduosSyncServices.Contracts.Models;
 using AduosSyncServices.Contracts.Settings;
 using Allegro.Aduos.Gaska.ProductsService.Settings;
 using System.Globalization;
-using System.Text;
 
 namespace Allegro.Aduos.Gaska.ProductsService.Helpers
 {
     public static class OfferFactory
     {
+        /// <summary>Maksymalna liczba zdjęć w galerii oferty Allegro.</summary>
+        internal const int MaxGalleryImages = 16;
+
         public static ProductOfferRequest BuildOffer(
             Product product,
             List<AllegroCategory> allegroCategories,
@@ -77,11 +79,12 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
             var price = CalculatePrice(product, priceSettings, quantity);
             var available = CalculateAvailableStock(stockOverride, product.InStock, quantity);
             var selectedDelivery = GetDeliveryRule(product, appSettings.Deliveries, appSettings.DeliveryMatchMode);
+            var images = GetOfferImages(product);
 
             var offer = new ProductOfferRequest
             {
-                Name = product.Name,
-                ProductSet = BuildProductSet(product, quantity, allegroSettings),
+                Name = OfferNameFormatter.Format(product.Name),
+                ProductSet = BuildProductSet(product, images, quantity, allegroSettings),
                 Stock = new Stock
                 {
                     Available = available,
@@ -96,8 +99,8 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                         Currency = "PLN"
                     }
                 },
-                Images = product.AllegroImages.DistinctBy(i => i.Url).Select(i => i.Url).ToList(),
-                Description = BuildDescription(product),
+                Images = images,
+                Description = OfferDescriptionBuilder.Build(product, images, quantity),
                 External = new External { Id = product.Code },
                 Publication = new Publication { Status = available < 1 ? AllegroOfferStatuses.Ended : publicationStatus, StartingAt = startingAt },
                 Category = new() { Id = product.DefaultAllegroCategory.ToString() },
@@ -133,6 +136,18 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
             return offer;
         }
 
+        /// <summary>
+        /// Zdjęcia oferty (galeria + opis). Allegro przyjmuje maksymalnie 16 zdjęć, a zdjęcie użyte w opisie,
+        /// którego nie ma w galerii, dokłada do galerii - więc ta sama, przycięta lista idzie wszędzie.
+        /// </summary>
+        internal static List<string> GetOfferImages(Product product) =>
+            (product.AllegroImages ?? new List<AllegroImages>())
+                .Select(i => i.Url)
+                .Where(u => !string.IsNullOrWhiteSpace(u))
+                .Distinct()
+                .Take(MaxGalleryImages)
+                .ToList();
+
         private static int GetPackageQuantity(Product product)
         {
             var baseQty = product.Packages.Any(p => p.PackRequired == 1)
@@ -154,6 +169,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
 
         private static List<ProductSet> BuildProductSet(
             Product product,
+            List<string> images,
             int quantity,
             AllegroSettings allegroSettings,
             string fallbackCat = "319123")
@@ -161,9 +177,9 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
             var categoryId = product.DefaultAllegroCategory.ToString();
             var productObject = new ProductObject
             {
-                Name = product.Name,
+                Name = OfferNameFormatter.Format(product.Name),
                 Category = new Category { Id = categoryId == "0" ? fallbackCat : categoryId },
-                Images = product.AllegroImages.DistinctBy(i => i.Url).Select(i => i.Url).ToList(),
+                Images = images,
                 Parameters = BuildParameters(product.Parameters, isForProduct: true),
             };
 
@@ -331,154 +347,6 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
             return new CompatibilityList { Items = items.Take(99).ToList() };
         }
 
-        private static Description BuildDescription(Product product)
-        {
-            var allImageUrls = product.AllegroImages.DistinctBy(i => i.Url).Select(i => i.Url).ToList();
-            var logoUrl = allImageUrls.LastOrDefault();
-            var description = new Description { Sections = new List<Section>() };
-
-            // Only treat the last URL as a separate "logo" (excluded from the product image
-            // rotation) when there's at least one other image. If it's the sole image, it's the
-            // product's own photo (e.g. logo upload failed or was never a distinct image) - excluding
-            // it would leave `images` empty and make images[imageIndex++] below throw, skipping the
-            // whole offer.
-            var images = allImageUrls.Count > 1
-                ? allImageUrls.Where(url => url != logoUrl).ToList()
-                : allImageUrls;
-            var imageIndex = 0;
-
-            var nameH1Html = $"<h1>{RemoveHiddenAscii(System.Net.WebUtility.HtmlEncode(product.Name))}</h1>";
-            var nameH2Html = $"<h2>{RemoveHiddenAscii(System.Net.WebUtility.HtmlEncode(product.Name))}</h2>";
-            var descriptionHtml = string.IsNullOrWhiteSpace(product.Description)
-                ? string.Empty
-                : $"<p>➡️ {RemoveHiddenAscii(System.Net.WebUtility.HtmlEncode(product.Description))}</p>";
-
-            var parametersHtml = string.Empty;
-            if (product.Specifications?.Any() == true)
-            {
-                var attributesList = string.Join("",
-                    product.Specifications.Select(p =>
-                        $"<p>➡️ {RemoveHiddenAscii(System.Net.WebUtility.HtmlEncode(p.Name))}: {RemoveHiddenAscii(System.Net.WebUtility.HtmlEncode(p.Value))} {RemoveHiddenAscii(System.Net.WebUtility.HtmlEncode(p.UnitName))}</p>"));
-                parametersHtml = $"<p><b>⚙️ Parametry/Wymiary:</b></p>{attributesList}";
-            }
-
-            var crossNumbersText = string.Empty;
-            if (!string.IsNullOrEmpty(product.Substitutes))
-            {
-                crossNumbersText = $"<p><b>⚙️ Numery katalogowe: </b>{product.Substitutes}</p>";
-            }
-
-            var applicationsText = string.Empty;
-            if (product.Applications?.Any() == true)
-            {
-                var applicationsByParent = product.Applications
-                    .GroupBy(a => a.ParentID)
-                    .ToDictionary(g => g.Key, g => g.ToList());
-
-                if (applicationsByParent.TryGetValue(0, out var rootApps))
-                {
-                    string GetLeafNames(int parentId)
-                    {
-                        if (!applicationsByParent.ContainsKey(parentId))
-                            return string.Empty;
-
-                        var leafNames = new List<string>();
-                        foreach (var child in applicationsByParent[parentId])
-                        {
-                            if (applicationsByParent.ContainsKey(child.ApplicationId))
-                            {
-                                leafNames.AddRange(GetLeafNames(child.ApplicationId)
-                                    .Split(new[] { ", " }, StringSplitOptions.RemoveEmptyEntries));
-                            }
-                            else
-                            {
-                                leafNames.Add(RemoveHiddenAscii(System.Net.WebUtility.HtmlEncode(child.Name)));
-                            }
-                        }
-                        return string.Join(", ", leafNames);
-                    }
-
-                    var listItems = new List<string>();
-                    foreach (var rootApp in rootApps)
-                    {
-                        if (!applicationsByParent.ContainsKey(rootApp.ApplicationId))
-                            continue;
-
-                        foreach (var secondLevel in applicationsByParent[rootApp.ApplicationId])
-                        {
-                            var leafs = GetLeafNames(secondLevel.ApplicationId);
-                            var li = $"<p><b>➡️ {System.Net.WebUtility.HtmlEncode(rootApp.Name)} - {System.Net.WebUtility.HtmlEncode(secondLevel.Name)}:</b></p><p> ⚙️ {leafs}</p>";
-                            listItems.Add(li);
-                        }
-                    }
-
-                    applicationsText = $"{string.Join("", listItems)}";
-                }
-            }
-
-            var technicalDetailsText = string.Empty;
-            if (!string.IsNullOrEmpty(crossNumbersText) || !string.IsNullOrEmpty(parametersHtml))
-            {
-                technicalDetailsText = $"<h2>☑️ DANE TECHNICZNE:</h2>";
-            }
-
-            var applicationLabel = string.Empty;
-            if (!string.IsNullOrEmpty(applicationsText))
-            {
-                applicationLabel = $"<h2>☑️ ZASTOSOWANIE:</h2>";
-            }
-
-            description.Sections.Add(new Section { SectionItems = new List<SectionItem> { new() { Type = "TEXT", Content = nameH1Html } } });
-            description.Sections.Add(new Section { SectionItems = new List<SectionItem> { new() { Type = "IMAGE", Url = logoUrl } } });
-
-            var descriptionSection = new StringBuilder()
-                .Append(nameH2Html)
-                .Append("<p>✨✨✨✨</p>")
-                .Append(descriptionHtml)
-                .Append(technicalDetailsText)
-                .Append(parametersHtml)
-                .Append(crossNumbersText)
-                .Append(applicationLabel)
-                .Append(applicationsText)
-                .Append("<h2>✨WYSOKIEJ JAKOŚCI CZĘŚĆ ZAMIENNA RENOMOWANEJ FIRMY✨</h2>");
-
-            var descriptionSectionItems = new List<SectionItem>
-            {
-                new() { Type = "TEXT", Content = descriptionSection.ToString() },
-                new() { Type = "IMAGE", Url = images[imageIndex++] }
-            };
-
-            description.Sections.Add(new Section { SectionItems = descriptionSectionItems });
-            description.Sections.Add(new Section { SectionItems = new List<SectionItem> { new() { Type = "IMAGE", Url = logoUrl } } });
-
-            while (imageIndex < images.Count)
-            {
-                var sectionImageItems = new List<SectionItem>
-                {
-                    new() { Type = "IMAGE", Url = images[imageIndex++] }
-                };
-
-                if (imageIndex < images.Count)
-                {
-                    sectionImageItems.Add(new SectionItem { Type = "IMAGE", Url = images[imageIndex++] });
-                }
-
-                // Add images section (image1,image2 etc.)
-                description.Sections.Add(new Section { SectionItems = sectionImageItems });
-
-                // Add logo section AFTER each image section
-                description.Sections.Add(new Section
-                {
-                    SectionItems = new List<SectionItem>
-                    {
-                        new() { Type = "IMAGE", Url = logoUrl }
-                    }
-                });
-            }
-
-            return description;
-        }
-
         private static DeliverySettings? GetDeliveryRule(Product product, List<DeliverySettings> deliveries, DeliveryMatchMode matchMode)
         {
             if (deliveries == null || deliveries.Count == 0)
@@ -532,6 +400,10 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
             return validRules
                 .FirstOrDefault();
         }
+
+        /// <summary>Czy do produktu pasuje jakikolwiek cennik dostawy. Bez cennika Allegro odrzuci ofertę.</summary>
+        internal static bool HasDeliveryRule(Product product, AppSettings appSettings) =>
+            GetDeliveryRule(product, appSettings.Deliveries, appSettings.DeliveryMatchMode) != null;
 
         internal static string? ResolveDeliveryNameForTests(Product product, List<DeliverySettings> deliveries, DeliveryMatchMode matchMode)
         {
@@ -660,10 +532,5 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
 
             return range.Margin;
         }
-
-        private static string RemoveHiddenAscii(string input) =>
-            string.IsNullOrEmpty(input)
-                ? input
-                : new string(input.Where(c => c >= 32 || c is (char)10 or (char)13).ToArray());
     }
 }
