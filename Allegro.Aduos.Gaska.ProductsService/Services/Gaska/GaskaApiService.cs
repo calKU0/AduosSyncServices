@@ -159,7 +159,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
             return (true, integrationIds);
         }
 
-        public async Task SyncProductDetails(CancellationToken ct = default)
+        public async Task<bool> SyncProductDetails(CancellationToken ct = default)
         {
             List<int> productsToUpdate;
 
@@ -185,14 +185,14 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
                 if (!productsToUpdate.Any())
                 {
                     _logger.LogInformation("No products found for detail update today.");
-                    return;
+                    return true;
                 }
 
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error while getting products to update details from database.");
-                return;
+                return false;
             }
 
             foreach (var productId in productsToUpdate)
@@ -234,6 +234,8 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
                     await Task.Delay(TimeSpan.FromSeconds(_apiSettings.Value.ProductInterval), ct);
                 }
             }
+
+            return true;
         }
 
         private async Task<List<int>?> GetProductsChanged(DateTime dateFrom, CancellationToken ct)

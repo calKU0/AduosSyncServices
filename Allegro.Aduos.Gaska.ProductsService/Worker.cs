@@ -85,12 +85,14 @@ public class Worker : BackgroundService
             await MeasureStepAsync("Allegro offers sync", () => offerService.SyncAllegroOffers());
             await MeasureStepAsync("Allegro offers details sync", () => offerService.SyncAllegroOffersDetails());
 
-            if (_lastProductDetailsSyncDate.Date < DateTime.Today
-                //&& DateTime.Now.Hour >= 2 && DateTime.Now.Hour <= 10
-                )
+            if (_lastProductDetailsSyncDate.Date < DateTime.Today)
             {
-                await MeasureStepAsync("Detailed product sync", () => gaskaApiService.SyncProductDetails());
-                _lastProductDetailsSyncDate = DateTime.Today;
+                var detailsSynced = false;
+                await MeasureStepAsync("Detailed product sync", async () => detailsSynced = await gaskaApiService.SyncProductDetails());
+
+                // A failed run (e.g. product list could not be loaded) stays eligible for retry in the next cycle.
+                if (detailsSynced)
+                    _lastProductDetailsSyncDate = DateTime.Today;
             }
 
             await MeasureStepAsync("Allegro categories update", () => categoryService.UpdateAllegroCategories());

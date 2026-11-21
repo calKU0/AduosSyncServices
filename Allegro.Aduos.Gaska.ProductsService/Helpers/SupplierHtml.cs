@@ -13,7 +13,13 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
     /// </summary>
     internal static class SupplierHtml
     {
-        private static readonly Regex Token = new(@"<\s*/?\s*[a-zA-Z][^<>]*>|[^<]+|<", RegexOptions.Compiled);
+        /// <summary>
+        /// Tylko znane tagi HTML są traktowane jak znaczniki. Inny tekst w nawiasach ostrych
+        /// (np. "&lt;M10&gt;", "&lt;P1&gt;") to treść techniczna i zostaje w opisie jako tekst.
+        /// </summary>
+        private static readonly Regex Token = new(
+            @"<\s*/?\s*(?:b|strong|br|p|div|span|ul|ol|li|i|em|u|h[1-6]|font|a|img|table|thead|tbody|tr|td|th|sup|sub|small|center|hr|section|article|header|footer|label|s|strike|del|ins|code|pre|blockquote)\b(?:\s+[a-zA-Z_:][-a-zA-Z0-9_:.]*(?:\s*=\s*(?:""[^""]*""|'[^']*'|[^\s""'<>]+))?)*\s*/?\s*>|[^<]+|<",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex TagName = new(@"^<\s*(/?)\s*([a-zA-Z0-9]+)", RegexOptions.Compiled);
         private static readonly Regex Spaces = new(@"[ \t ]+", RegexOptions.Compiled);
 
