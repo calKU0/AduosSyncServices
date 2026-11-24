@@ -38,6 +38,9 @@ namespace AduosSyncServices.Contracts.Models
         public bool? IsDropshipping { get; set; }
         public OrderSource Source { get; set; }
         public int? InternalStatusId { get; set; }
+
+        /// <summary>Kiedy przesyłki zamówienia zostały porównane z tym, co ma Allegro (null = jeszcze nie).</summary>
+        public DateTime? ShipmentsCheckedAt { get; set; }
         public List<AllegroOrderItem> Items { get; set; } = new();
     }
 }

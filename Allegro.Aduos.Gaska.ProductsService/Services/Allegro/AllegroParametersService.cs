@@ -44,11 +44,11 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
 
                         foreach (var catParam in categoryParams)
                         {
-                            string value = MapProductToParameter(product, catParam);
+                            string value = ResolveParameterValue(product, catParam);
 
                             if (string.IsNullOrEmpty(value) && (catParam.Required || catParam.RequiredForProduct))
                             {
-                                _logger.LogWarning("Missing required parameter {ParamName} for product {Code}", product.Code);
+                                _logger.LogWarning("Missing required parameter {ParamName} for product {Code}", catParam.Name, product.Code);
                                 continue;
                             }
 
@@ -86,7 +86,14 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
             }
         }
 
-        private string MapProductToParameter(Product product, CategoryParameter param)
+        /// <summary>Id parametru Allegro "Jakość części (zgodnie z GVO)".</summary>
+        internal const int GvoParameterId = 214434;
+
+        /// <summary>Domyślna jakość części - zamiennik. Allegro odrzuca ją dla części części producentów OE (np. Corteco).</summary>
+        internal const string GvoReplacementValue = "P - zamiennik o jakości porównywalnej do oryginału";
+
+        /// <summary>Wartość parametru kategorii dla produktu albo null, gdy nie umiemy jej ustalić.</summary>
+        internal static string ResolveParameterValue(Product product, CategoryParameter param)
         {
             if (param == null) return null;
 
@@ -97,13 +104,15 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                 ["stan"] = _ => "Nowy",
                 ["waga produktu z opakowaniem jednostkowym"] = p => p.Weight.ToString(),
                 ["numer katalogowy części"] = p => p.Code,
+                ["kod producenta"] = p => p.Code,
+                ["ean (gtin)"] = p => IsValidGtin(p.Ean) ? p.Ean.Trim() : null,
                 ["typ maszyny"] = _ => "Inny",
                 ["rodzaj skrzyni"] = _ => "Brak informacji",
                 ["typ samochodu"] = _ => "Niezdefiniowany",
                 ["numer katalogowy oryginału"] = p => p.Code,
                 ["numery katalogowe zamienników"] = p => p.Substitutes,
                 ["stan opakowania"] = _ => "oryginalne",
-                ["jakość części (zgodnie z gvo)"] = _ => "P - zamiennik o jakości porównywalnej do oryginału"
+                ["jakość części (zgodnie z gvo)"] = _ => GvoReplacementValue
             };
 
             Func<Product, string> resolver;
@@ -119,7 +128,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
             return null;
         }
 
-        private string GetMatchingValue(Product product, CategoryParameter param)
+        private static string GetMatchingValue(Product product, CategoryParameter param)
         {
             const string fallback = "JAG";
 
@@ -149,7 +158,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                 : fallback;
         }
 
-        private string GetBrandMatchingValue(Product product, CategoryParameter param)
+        private static string GetBrandMatchingValue(Product product, CategoryParameter param)
         {
             const string fallback = "Inna";
 
@@ -184,6 +193,70 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
 
             return rootBrands.FirstOrDefault() ?? fallback;
         }
+
+        /// <summary>Poprawny EAN-8 / UPC-A / EAN-13 / GTIN-14 (same cyfry + cyfra kontrolna).</summary>
+        internal static bool IsValidGtin(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return false;
+
+            var code = value.Trim();
+            if (code.Length is not (8 or 12 or 13 or 14) || !code.All(char.IsAsciiDigit))
+                return false;
+
+            if (code.All(c => c == '0'))
+                return false;
+
+            // Wagi 3/1 liczone od prawej, z pominięciem cyfry kontrolnej.
+            var sum = 0;
+            for (int i = code.Length - 2, weight = 3; i >= 0; i--, weight = weight == 3 ? 1 : 3)
+                sum += (code[i] - '0') * weight;
+
+            return (10 - sum % 10) % 10 == code[^1] - '0'
+                && !IsRestrictedCirculationNumber(code);
+        }
+
+        /// <summary>
+        /// Numer Ograniczonej Dystrybucji (RCN, kody wewnętrzne/sklepowe GS1) - Allegro ich nie przyjmuje.
+        /// EAN-13 z prefiksem 2xx, 02x, 04x; UPC-A (12 cyfr) zaczynający się od 2 lub 4; EAN-8 od 0 lub 2.
+        /// </summary>
+        internal static bool IsRestrictedCirculationNumber(string code) => code.Length switch
+        {
+            8 => code[0] is '0' or '2',
+            12 => code[0] is '2' or '4',
+            13 => code[0] == '2' || code.StartsWith("02") || code.StartsWith("04"),
+            _ => false
+        };
+
+        /// <summary>
+        /// Wartość GVO na miejsce odrzuconej. Allegro nie pozwala na "P - zamiennik" dla części producentów
+        /// dostarczających na pierwszy montaż (np. Corteco) - wybieramy wtedy jakość oryginału: najpierw
+        /// "Q" (część o jakości oryginału), potem "O" (oryginał), z pominięciem odrzuconej wartości.
+        /// </summary>
+        internal static string? ChooseGvoReplacement(IEnumerable<string> allowedValues, string? rejectedValue)
+        {
+            var candidates = allowedValues
+                .Where(v => !string.IsNullOrWhiteSpace(v))
+                .Where(v => !string.Equals(v.Trim(), rejectedValue?.Trim(), StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            foreach (var prefix in new[] { "Q", "O" })
+            {
+                var match = candidates.FirstOrDefault(v => v.TrimStart().StartsWith(prefix + " ", StringComparison.OrdinalIgnoreCase)
+                                                        || v.TrimStart().StartsWith(prefix + "-", StringComparison.OrdinalIgnoreCase));
+                if (match != null)
+                    return match;
+            }
+
+            return null;
+        }
+
+        /// <summary>Czy jakość GVO oznacza zamiennik (brak parametru traktujemy jak zamiennik - to wartość domyślna).</summary>
+        internal static bool IsReplacementQuality(string? gvoValue) =>
+            string.IsNullOrWhiteSpace(gvoValue)
+            || gvoValue.TrimStart().StartsWith("P", StringComparison.OrdinalIgnoreCase)
+            || gvoValue.TrimStart().StartsWith("N", StringComparison.OrdinalIgnoreCase)
+            || gvoValue.Contains("zamiennik", StringComparison.OrdinalIgnoreCase);
 
         private static string Normalize(string value)
         {

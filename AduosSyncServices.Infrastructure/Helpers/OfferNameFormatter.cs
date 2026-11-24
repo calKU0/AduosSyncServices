@@ -1,15 +1,15 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 
-namespace Allegro.Aduos.Gaska.ProductsService.Helpers
+namespace AduosSyncServices.Infrastructure.Helpers
 {
     /// <summary>
-    /// Nazwa oferty na Allegro: każdy wyraz od wielkiej litery, reszta małymi
+    /// Nazwa produktu (Allegro i ShopGold): każdy wyraz od wielkiej litery, reszta małymi
     /// ("ROZRUSZNIK 3.2KW Z REDUKTOREM URSUS C 330" -> "Rozrusznik 3.2Kw z Reduktorem Ursus C 330").
     /// Krótkie przyimki i spójniki (z, do, i, w...) zostają małymi literami, chyba że zaczynają nazwę.
     /// Liczby rzymskie (II, IV...) zostają wielkimi literami.
     /// </summary>
-    internal static class OfferNameFormatter
+    public static class OfferNameFormatter
     {
         private static readonly CultureInfo Polish = CultureInfo.GetCultureInfo("pl-PL");
 
@@ -55,7 +55,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
         /// Symbol/numer katalogowy: litery z cyframi (JAG59-0030, 3541414M1, RE520906+) albo sam numer
         /// z co najmniej 4 cyframi (82991684, 0434.5858, 46/42-790/3). Liczba z jednostką (3.2KW, 12V) to nie kod.
         /// </summary>
-        internal static bool IsCatalogCode(string word)
+        public static bool IsCatalogCode(string word)
         {
             if (!word.Any(char.IsDigit) || NumberWithUnit.IsMatch(word))
                 return false;

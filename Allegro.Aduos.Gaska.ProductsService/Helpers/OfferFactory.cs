@@ -3,6 +3,7 @@ using AduosSyncServices.Contracts.Data.Enums;
 using AduosSyncServices.Contracts.DTOs.Allegro;
 using AduosSyncServices.Contracts.Models;
 using AduosSyncServices.Contracts.Settings;
+using AduosSyncServices.Infrastructure.Helpers;
 using Allegro.Aduos.Gaska.ProductsService.Settings;
 using System.Globalization;
 
@@ -83,7 +84,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
 
             var offer = new ProductOfferRequest
             {
-                Name = OfferNameFormatter.Format(product.Name),
+                Name = BuildOfferName(product),
                 ProductSet = BuildProductSet(product, images, quantity, allegroSettings),
                 Stock = new Stock
                 {
@@ -140,6 +141,36 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
         /// Zdjęcia oferty (galeria + opis). Allegro przyjmuje maksymalnie 16 zdjęć, a zdjęcie użyte w opisie,
         /// którego nie ma w galerii, dokłada do galerii - więc ta sama, przycięta lista idzie wszędzie.
         /// </summary>
+        /// <summary>Allegro wymaga co najmniej 3 słów w tytule oferty (ConstraintViolationException.MinWords).</summary>
+        internal const int MinTitleWords = 3;
+
+        /// <summary>
+        /// Tytuł oferty: sformatowana nazwa produktu, a gdy ma mniej niż 3 słowa - dopisany kod towaru
+        /// (jeśli go jeszcze nie ma w nazwie), potem "JAG". Ostatecznie "Część" na początku.
+        /// </summary>
+        internal static string BuildOfferName(Product product)
+        {
+            var name = OfferNameFormatter.Format(product.Name);
+            var words = name.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+
+            foreach (var extra in new[] { product.Code, "JAG" })
+            {
+                if (words.Count >= MinTitleWords)
+                    break;
+
+                var word = extra?.Trim();
+                if (string.IsNullOrEmpty(word) || word.Contains(' ') || words.Contains(word, StringComparer.OrdinalIgnoreCase))
+                    continue;
+
+                words.Add(word);
+            }
+
+            if (words.Count < MinTitleWords && !words.Contains("Część", StringComparer.OrdinalIgnoreCase))
+                words.Insert(0, "Część");
+
+            return string.Join(' ', words);
+        }
+
         internal static List<string> GetOfferImages(Product product) =>
             (product.AllegroImages ?? new List<AllegroImages>())
                 .Select(i => i.Url)
@@ -148,24 +179,10 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                 .Take(MaxGalleryImages)
                 .ToList();
 
-        private static int GetPackageQuantity(Product product)
-        {
-            var baseQty = product.Packages.Any(p => p.PackRequired == 1)
-                ? Convert.ToInt32(product.Packages.First(p => p.PackRequired == 1).PackQty)
-                : 1;
+        private static int GetPackageQuantity(Product product) => SalesRules.GetPackageQuantity(product);
 
-            if (baseQty < 1)
-                baseQty = 1;
-
-            return baseQty;
-        }
-
-        private static int CalculateAvailableStock(int? stockOverride, float inStock, int quantity)
-        {
-            var baseAvailable = stockOverride ?? Convert.ToInt32(Math.Floor(inStock));
-            var safeQuantity = Math.Max(1, quantity);
-            return Math.Max(0, baseAvailable / safeQuantity);
-        }
+        private static int CalculateAvailableStock(int? stockOverride, float inStock, int quantity) =>
+            SalesRules.CalculateAvailableStock(stockOverride ?? (float)Math.Floor(inStock), quantity);
 
         private static List<ProductSet> BuildProductSet(
             Product product,
@@ -177,7 +194,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
             var categoryId = product.DefaultAllegroCategory.ToString();
             var productObject = new ProductObject
             {
-                Name = OfferNameFormatter.Format(product.Name),
+                Name = BuildOfferName(product),
                 Category = new Category { Id = categoryId == "0" ? fallbackCat : categoryId },
                 Images = images,
                 Parameters = BuildParameters(product.Parameters, isForProduct: true),
@@ -214,15 +231,16 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
         {
             var result = new List<Parameter>();
 
-            var multiValueParams = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            // Separatory wartości parametrów wielowartościowych. Marka tylko po przecinku -
+            // nazwy wielowyrazowe ("Massey Ferguson", "John Deere") to jedna wartość słownika.
+            var multiValueParams = new Dictionary<string, char[]>(StringComparer.OrdinalIgnoreCase)
             {
-                "numery katalogowe zamienników",
-                "marka",
+                ["numery katalogowe zamienników"] = new[] { ',', ' ' },
+                ["marka"] = new[] { ',', ';' },
             };
 
             foreach (var param in parameters.Where(p =>
                          p.IsForProduct == isForProduct &&
-                         p.Name != "EAN (GTIN)" &&
                          p.Name != "Informacje o bezpieczeństwie"))
             {
                 if (string.IsNullOrWhiteSpace(param.Value))
@@ -234,10 +252,10 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
                     .Trim();
 
                 List<string> values;
-                if (multiValueParams.Contains(param.Name))
+                if (multiValueParams.TryGetValue(param.Name, out var separators))
                 {
                     values = cleaned
-                        .Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                        .Split(separators, StringSplitOptions.RemoveEmptyEntries)
                         .Select(v => v.Trim())
                         .Where(v => !string.IsNullOrWhiteSpace(v))
                         .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -347,190 +365,14 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
             return new CompatibilityList { Items = items.Take(99).ToList() };
         }
 
-        private static DeliverySettings? GetDeliveryRule(Product product, List<DeliverySettings> deliveries, DeliveryMatchMode matchMode)
-        {
-            if (deliveries == null || deliveries.Count == 0)
-                return null;
-
-            var validRules = deliveries
-                .Where(d => !string.IsNullOrWhiteSpace(d.DeliveryName))
-                .ToList();
-
-            if (!validRules.Any())
-                return null;
-
-            var productWeight = (decimal)product.Weight;
-            var productLength = GetDimensionCm(product, "Długość");
-            var productWidth = GetDimensionCm(product, "Szerokość");
-            var productHeight = GetDimensionCm(product, "Wysokość");
-
-            var customType2Rule = validRules
-                .Where(r => IsRuleType(r, DeliveryRuleType.CustomType))
-                .FirstOrDefault();
-
-            if (product.DeliveryType == 2 && customType2Rule != null)
-                return customType2Rule;
-
-            var bulkyRule = validRules
-                .Where(r => IsRuleType(r, DeliveryRuleType.BulkyType))
-                .Where(r => product.DeliveryType == 1)
-                .ToList();
-
-            if (bulkyRule.Any())
-            {
-                var selectedBulky = matchMode == DeliveryMatchMode.Price
-                    ? SelectByPriceThreshold(bulkyRule, product.PriceNet)
-                    : SelectByDimensionsAndWeight(bulkyRule, productWeight, productLength, productWidth, productHeight);
-
-                if (selectedBulky != null)
-                    return selectedBulky;
-            }
-
-            var standardRules = validRules
-                .Where(r => IsRuleType(r, DeliveryRuleType.Standard))
-                .ToList();
-
-            var matchingRule = matchMode == DeliveryMatchMode.Price
-                ? SelectByPriceThreshold(standardRules, product.PriceNet)
-                : SelectByDimensionsAndWeight(standardRules, productWeight, productLength, productWidth, productHeight);
-
-            if (matchingRule != null)
-                return matchingRule;
-
-            return validRules
-                .FirstOrDefault();
-        }
+        private static DeliverySettings? GetDeliveryRule(Product product, List<DeliverySettings> deliveries, DeliveryMatchMode matchMode) =>
+            SalesRules.GetDeliveryRule(product, deliveries, matchMode);
 
         /// <summary>Czy do produktu pasuje jakikolwiek cennik dostawy. Bez cennika Allegro odrzuci ofertę.</summary>
         internal static bool HasDeliveryRule(Product product, AppSettings appSettings) =>
             GetDeliveryRule(product, appSettings.Deliveries, appSettings.DeliveryMatchMode) != null;
 
-        internal static string? ResolveDeliveryNameForTests(Product product, List<DeliverySettings> deliveries, DeliveryMatchMode matchMode)
-        {
-            return GetDeliveryRule(product, deliveries, matchMode)?.DeliveryName;
-        }
-
-        internal static string? ResolveHandlingTimeForTests(Product product, List<DeliverySettings> deliveries, DeliveryMatchMode matchMode)
-        {
-            return GetDeliveryRule(product, deliveries, matchMode)?.HandlingTime.ToString();
-        }
-
-        private static bool IsRuleType(DeliverySettings rule, DeliveryRuleType expectedRuleType)
-        {
-            return rule.RuleType == expectedRuleType;
-        }
-
-        private static bool MatchesNetThreshold(DeliverySettings rule, decimal productNetPrice)
-        {
-            return !rule.NetPriceThreshold.HasValue || productNetPrice >= rule.NetPriceThreshold.Value;
-        }
-
-        private static bool MatchesDimensionsAndWeight(
-            DeliverySettings rule,
-            decimal productWeight,
-            decimal? productLength,
-            decimal? productWidth,
-            decimal? productHeight)
-        {
-            if (rule.Weight <= 0 || rule.Length <= 0 || rule.Width <= 0 || rule.Height <= 0)
-                return false;
-
-            if (productWeight > rule.Weight)
-                return false;
-
-            if (productLength.HasValue && productLength.Value > rule.Length)
-                return false;
-
-            if (productWidth.HasValue && productWidth.Value > rule.Width)
-                return false;
-
-            if (productHeight.HasValue && productHeight.Value > rule.Height)
-                return false;
-
-            return true;
-        }
-
-        private static DeliverySettings SelectByDimensionsAndWeight(
-            IEnumerable<DeliverySettings> rules,
-            decimal productWeight,
-            decimal? productLength,
-            decimal? productWidth,
-            decimal? productHeight)
-        {
-            var list = rules.ToList();
-            var matched = list
-                .Where(r => MatchesDimensionsAndWeight(r, productWeight, productLength, productWidth, productHeight))
-                .OrderBy(r => r.Weight)
-                .ThenBy(r => r.Length * r.Width * r.Height)
-                .FirstOrDefault();
-
-            if (matched != null)
-                return matched;
-
-            return list
-                .OrderByDescending(r => r.Weight)
-                .ThenByDescending(r => r.Length * r.Width * r.Height)
-                .FirstOrDefault();
-        }
-
-        private static DeliverySettings SelectByPriceThreshold(IEnumerable<DeliverySettings> rules, decimal productNetPrice)
-        {
-            var list = rules.ToList();
-            var matched = list
-                .Where(r => MatchesNetThreshold(r, productNetPrice))
-                .OrderByDescending(r => r.NetPriceThreshold ?? 0)
-                .FirstOrDefault();
-
-            if (matched != null)
-                return matched;
-
-            return list
-                .OrderBy(r => r.NetPriceThreshold ?? decimal.MaxValue)
-                .FirstOrDefault();
-        }
-
-        private static decimal? GetDimensionCm(Product product, string dimensionName)
-        {
-            var spec = product.Specifications?
-                .FirstOrDefault(s =>
-                    string.Equals(s.Name, dimensionName, StringComparison.OrdinalIgnoreCase));
-
-            if (spec == null)
-                return null;
-
-            if (!decimal.TryParse(
-                    spec.Value.Replace(",", "."),
-                    NumberStyles.Any,
-                    CultureInfo.InvariantCulture,
-                    out var value))
-                return null;
-
-            return spec.UnitName?.ToLower() switch
-            {
-                "mm" => value / 10m,
-                "cm" => value,
-                "m" => value * 100m,
-                _ => null
-            };
-        }
-
-        private static decimal CalculatePrice(Product product, PriceSettings priceSettings, int quantity)
-        {
-            var effectiveMargin = ResolveMargin(priceSettings, product.PriceNet);
-            var calculatedPrice = product.PriceNet * quantity * (1 + effectiveMargin / 100m);
-
-            return Math.Ceiling(calculatedPrice) - 0.01m;
-        }
-
-        private static decimal ResolveMargin(PriceSettings priceSettings, decimal netPrice)
-        {
-            var range = priceSettings.MarginRanges
-                .FirstOrDefault(r => netPrice >= r.Min && netPrice <= r.Max);
-
-            if (range == null)
-                return priceSettings.MarginRanges.Last().Margin;
-
-            return range.Margin;
-        }
+        private static decimal CalculatePrice(Product product, PriceSettings priceSettings, int quantity) =>
+            SalesRules.CalculatePrice(product.PriceNet, quantity, priceSettings);
     }
 }

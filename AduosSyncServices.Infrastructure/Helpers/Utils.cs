@@ -1,41 +1,55 @@
-﻿using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Jpeg;
-using SixLabors.ImageSharp.Processing;
+﻿using SkiaSharp;
 using System.Globalization;
 
 namespace AduosSyncServices.Infrastructure.Helpers
 {
     public static class Utils
     {
-        public static byte[] EnsureImageMinSize(byte[] image, int minWidth = 400, int minHeight = 400)
+        /// <summary>Jakość JPEG po powiększeniu zdjęcia.</summary>
+        private const int JpegQuality = 90;
+
+        /// <summary>
+        /// Allegro odrzuca zdjęcia mniejsze niż 400×400. Mniejsze powiększamy proporcjonalnie i zapisujemy
+        /// jako JPEG (przezroczystość PNG na białym tle). Wystarczająco duże zwracamy bez zmian.
+        /// Null = plik nie jest poprawnym obrazem.
+        /// </summary>
+        public static byte[]? EnsureImageMinSize(byte[] image, int minWidth = 400, int minHeight = 400)
         {
             try
             {
-                using var imageTemp = Image.Load(image);
+                using var source = SKBitmap.Decode(image);
+                if (source == null || source.Width <= 0 || source.Height <= 0)
+                    return null;
 
-                if (imageTemp.Width >= minWidth && imageTemp.Height >= minHeight)
-                    return image; // already large enough
+                if (source.Width >= minWidth && source.Height >= minHeight)
+                    return image;
 
-                // Calculate scale factor to meet minimum size
-                double scaleX = (double)minWidth / imageTemp.Width;
-                double scaleY = (double)minHeight / imageTemp.Height;
-                double scale = Math.Max(scaleX, scaleY);
+                var scale = Math.Max((double)minWidth / source.Width, (double)minHeight / source.Height);
+                var newWidth = (int)Math.Ceiling(source.Width * scale);
+                var newHeight = (int)Math.Ceiling(source.Height * scale);
 
-                int newWidth = (int)(imageTemp.Width * scale);
-                int newHeight = (int)(imageTemp.Height * scale);
+                using var sourceImage = SKImage.FromBitmap(source);
+                using var surface = SKSurface.Create(new SKImageInfo(newWidth, newHeight, SKColorType.Rgba8888, SKAlphaType.Premul));
+                surface.Canvas.Clear(SKColors.White);
+                surface.Canvas.DrawImage(sourceImage, new SKRect(0, 0, newWidth, newHeight), new SKSamplingOptions(SKCubicResampler.Mitchell), null);
 
-                imageTemp.Mutate(x => x.Resize(newWidth, newHeight));
+                using var result = surface.Snapshot();
+                using var data = result.Encode(SKEncodedImageFormat.Jpeg, JpegQuality);
 
-                using var ms = new MemoryStream();
-                imageTemp.Save(ms, new JpegEncoder());
-
-                return ms.ToArray();
+                return data?.ToArray();
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 return null;
             }
         }
+
+        /// <summary>
+        /// Typ zawartości zdjęcia do wysłania: oryginał według rozszerzenia pliku, obraz powiększony przez
+        /// <see cref="EnsureImageMinSize"/> - zawsze JPEG.
+        /// </summary>
+        public static string GetContentType(string path, byte[] original, byte[] validated) =>
+            ReferenceEquals(original, validated) ? GetContentTypeFromPath(path) : "image/jpeg";
 
         public static string GetContentTypeFromPath(string path)
         {

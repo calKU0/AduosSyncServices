@@ -62,6 +62,23 @@ namespace AduosSyncServices.ServicesManager
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
+        /// <summary>
+        /// Wybór konta (na ekranie startowym i w panelu bocznym) tylko przy więcej niż jednym koncie -
+        /// inaczej w panelu bocznym wybór serwisu zajmuje całą szerokość.
+        /// </summary>
+        private void UpdateAccountSelectorLayout()
+        {
+            var showAccounts = AvailableAccounts.Count > 1;
+            var accountVisibility = showAccounts ? Visibility.Visible : Visibility.Collapsed;
+
+            TbAccountSelectorOverlay.Visibility = accountVisibility;
+            CbAccountSelectorOverlay.Visibility = accountVisibility;
+            CbAccountSelector.Visibility = accountVisibility;
+            Grid.SetColumn(CbServiceSelector, showAccounts ? 1 : 0);
+            Grid.SetColumnSpan(CbServiceSelector, showAccounts ? 1 : 2);
+            CbServiceSelector.Margin = showAccounts ? new Thickness(6, 0, 0, 0) : new Thickness(0);
+        }
+
         public MainWindow()
         {
             InitializeComponent();
@@ -70,6 +87,8 @@ namespace AduosSyncServices.ServicesManager
             CbServiceSelector.ItemsSource = AvailableServices;
             CbAccountSelector.ItemsSource = AvailableAccounts;
             CbAccountSelectorOverlay.ItemsSource = AvailableAccounts;
+            AvailableAccounts.CollectionChanged += (_, _) => UpdateAccountSelectorLayout();
+            UpdateAccountSelectorLayout();
             InitializeCommands();
             InitializeConfigDirtyTracking();
 

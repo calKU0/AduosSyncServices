@@ -1,4 +1,5 @@
 ﻿using AduosSyncServices.Contracts.Clients;
+using AduosSyncServices.Contracts.Data;
 using AduosSyncServices.Contracts.DTOs.GaskaApi;
 using AduosSyncServices.Contracts.Interfaces;
 using AduosSyncServices.Contracts.Models;
@@ -23,22 +24,21 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
         private readonly IProductRepository _productRepo;
         private readonly IImageRepository _imageRepo;
         private readonly IGaskaApiClient _gaskaApiClient;
+        private readonly ISyncCategoryRepository _syncCategoryRepo;
         private readonly List<int> _categoriesIds;
         private IOptions<GaskaApiCredentials> _apiSettings;
         private readonly IOptions<AppSettings> _appSettings;
 
-        public GaskaApiService(IProductRepository productRepo, IImageRepository imageRepo, IGaskaApiClient gaskaApiClient, IOptions<GaskaApiCredentials> apiSettings, IOptions<AppSettings> appSettings, ILogger<GaskaApiService> logger)
+        public GaskaApiService(IProductRepository productRepo, IImageRepository imageRepo, IGaskaApiClient gaskaApiClient, ISyncCategoryRepository syncCategoryRepo, IOptions<GaskaApiCredentials> apiSettings, IOptions<AppSettings> appSettings, ILogger<GaskaApiService> logger)
         {
             _productRepo = productRepo;
             _imageRepo = imageRepo;
             _gaskaApiClient = gaskaApiClient;
-            _categoriesIds = appSettings.Value.CategoriesId?
-                .Split(',', StringSplitOptions.RemoveEmptyEntries)
-                .Select(s => int.TryParse(s.Trim(), out var val) ? val : (int?)null)
-                .Where(v => v.HasValue)
-                .Select(v => v.Value)
-                .ToList()
-                ?? new List<int>();
+            _syncCategoryRepo = syncCategoryRepo;
+            _categoriesIds = (appSettings.Value.CategoriesId ?? new List<int>())
+                .Where(id => id != 0)
+                .Distinct()
+                .ToList();
 
             _apiSettings = apiSettings;
             _appSettings = appSettings;
@@ -50,21 +50,32 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
             bool hasErrors = false;
             var syncedIntegrationIds = new HashSet<int>();
 
-            if (_categoriesIds == null || !_categoriesIds.Any())
+            // Drzewo kategorii - lista wyboru kategorii w ServicesManagerze (Allegro i ShopGold).
+            await SyncCategoryTreeAsync(ct);
+
+            // Kategorie innych kanałów (ShopGold) też trzeba pobrać do bazy - produkty z Gąski pobiera
+            // tylko ten serwis. Na Allegro trafiają jednak wyłącznie produkty z kategorii Allegro
+            // (filtr po powiązaniach ProductSyncCategories w procedurach ofert).
+            var categoriesToFetch = await GetCategoriesToFetchAsync(ct);
+
+            if (!_categoriesIds.Any())
             {
-                _logger.LogInformation("No categories configured. Syncing ALL products.");
+                _logger.LogInformation("No Allegro categories configured. Syncing ALL products.");
                 var result = await SyncProductsByCategory(null, ct);
                 hasErrors = hasErrors || !result.Success;
                 syncedIntegrationIds.UnionWith(result.IntegrationIds);
             }
-            else
+
+            foreach (var categoryId in categoriesToFetch)
             {
-                foreach (var categoryId in _categoriesIds)
-                {
-                    var result = await SyncProductsByCategory(categoryId, ct);
-                    hasErrors = hasErrors || !result.Success;
-                    syncedIntegrationIds.UnionWith(result.IntegrationIds);
-                }
+                var result = await SyncProductsByCategory(categoryId, ct);
+                hasErrors = hasErrors || !result.Success;
+                syncedIntegrationIds.UnionWith(result.IntegrationIds);
+
+                // Powiązania zmieniamy tylko dla kategorii pobranej w całości - niepełne pobranie
+                // odebrałoby produktom kategorię, w której nadal są.
+                if (result.Success)
+                    await SaveCategoryLinksAsync(categoryId, result.IntegrationIds, ct);
             }
 
             if (hasErrors)
@@ -72,6 +83,8 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
                 _logger.LogWarning("Errors occurred during product sync. Archiving skipped.");
                 return;
             }
+
+            await DeleteLinksOfRemovedCategoriesAsync(categoriesToFetch, ct);
 
             if (!syncedIntegrationIds.Any())
             {
@@ -92,6 +105,94 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
             var deletedCount = await _productRepo.DeleteArchivedProductsWithEndedOffersAsync(ct);
             if (deletedCount > 0)
                 _logger.LogInformation("Deleted {DeletedCount} archived products whose Allegro offer is ENDED.", deletedCount);
+        }
+
+        /// <summary>
+        /// Pełne drzewo kategorii Gąski z /categories - jedno zapytanie na cykl. Błąd nie przerywa
+        /// pobierania produktów: lista wyboru zostaje po prostu z poprzedniego cyklu.
+        /// </summary>
+        private async Task SyncCategoryTreeAsync(CancellationToken ct)
+        {
+            try
+            {
+                var response = await _gaskaApiClient.GetCategories("pl", ct);
+
+                if (response.Result != 0)
+                {
+                    _logger.LogError("Gąska API returned an error for categories: {Message}", response.Message ?? "empty response");
+                    return;
+                }
+
+                var count = await _syncCategoryRepo.UpsertGaskaCategoryTreeAsync(
+                    (response.Categories ?? new List<ApiCategory>()).Select(c => (c.Id, c.ParentID, c.Name ?? string.Empty)), ct);
+
+                _logger.LogInformation("Gąska category tree synchronized: {Count} categories.", count);
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                _logger.LogError(ex, "Synchronizing the Gąska category tree failed.");
+            }
+        }
+
+        /// <summary>
+        /// Zapisuje kategorie Allegro do wspólnej tabeli i zwraca sumę kategorii wszystkich kanałów.
+        /// Przy błędzie bazy pobieramy tylko kategorie Allegro - jak przed wprowadzeniem kanałów.
+        /// </summary>
+        private async Task<List<int>> GetCategoriesToFetchAsync(CancellationToken ct)
+        {
+            try
+            {
+                await _syncCategoryRepo.ReplaceChannelCategoriesAsync(SyncChannels.Allegro, _categoriesIds, ct);
+
+                var allChannels = await _syncCategoryRepo.GetAllChannelCategoriesAsync(ct);
+                var otherChannels = allChannels
+                    .Where(c => !string.Equals(c.Channel, SyncChannels.Allegro, StringComparison.OrdinalIgnoreCase))
+                    .Select(c => c.CategoryId)
+                    .Where(id => id != 0 && !_categoriesIds.Contains(id))
+                    .Distinct()
+                    .OrderBy(id => id)
+                    .ToList();
+
+                if (otherChannels.Any())
+                {
+                    _logger.LogInformation(
+                        "Fetching also {Count} categories configured only in other channels (not listed on Allegro): {Categories}",
+                        otherChannels.Count, string.Join(", ", otherChannels));
+                }
+
+                return _categoriesIds.Concat(otherChannels).ToList();
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                _logger.LogError(ex, "Error while reading categories of other sales channels. Fetching Allegro categories only.");
+                return _categoriesIds.ToList();
+            }
+        }
+
+        private async Task SaveCategoryLinksAsync(int categoryId, IEnumerable<int> integrationIds, CancellationToken ct)
+        {
+            try
+            {
+                await _syncCategoryRepo.ReplaceProductLinksForCategoryAsync(categoryId, integrationIds, ct);
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                _logger.LogError(ex, "Saving product links for category {CategoryId} failed.", categoryId);
+            }
+        }
+
+        private async Task DeleteLinksOfRemovedCategoriesAsync(IEnumerable<int> fetchedCategories, CancellationToken ct)
+        {
+            try
+            {
+                var deleted = await _syncCategoryRepo.DeleteProductLinksNotInAsync(fetchedCategories, ct);
+                if (deleted > 0)
+                    _logger.LogInformation("Removed {Count} product links to categories no longer configured in any channel.", deleted);
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                _logger.LogError(ex, "Removing product links of unconfigured categories failed.");
+            }
         }
 
         private async Task<(bool Success, HashSet<int> IntegrationIds)> SyncProductsByCategory(int? categoryId, CancellationToken ct)

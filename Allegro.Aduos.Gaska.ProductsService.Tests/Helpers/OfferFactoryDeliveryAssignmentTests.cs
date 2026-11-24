@@ -1,7 +1,7 @@
+using AduosSyncServices.Infrastructure.Helpers;
 using AduosSyncServices.Contracts.Data.Enums;
 using AduosSyncServices.Contracts.Models;
 using AduosSyncServices.Contracts.Settings;
-using Allegro.Aduos.Gaska.ProductsService.Helpers;
 using Xunit;
 
 namespace Allegro.Aduos.Gaska.ProductsService.Tests.Helpers;
@@ -9,7 +9,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Tests.Helpers;
 public class OfferFactoryDeliveryAssignmentTests
 {
     [Fact]
-    public void ResolveDeliveryNameForTests_ReturnsCustomRate_ForDeliveryType2()
+    public void ResolveDeliveryName_ReturnsCustomRate_ForDeliveryType2()
     {
         var product = CreateProduct(deliveryType: 2, weight: 12, length: 40, width: 20, height: 10);
         var deliveries = new List<DeliverySettings>
@@ -19,13 +19,13 @@ public class OfferFactoryDeliveryAssignmentTests
             new() { RuleType = DeliveryRuleType.BulkyType, NetPriceThreshold = 0, DeliveryName = "BULKY" }
         };
 
-        var result = OfferFactory.ResolveDeliveryNameForTests(product, deliveries, DeliveryMatchMode.Price);
+        var result = SalesRules.GetDeliveryRule(product, deliveries, DeliveryMatchMode.Price)?.DeliveryName;
 
         Assert.Equal("CUSTOM", result);
     }
 
     [Fact]
-    public void ResolveHandlingTimeForTests_ReturnsHandlingTime_FromMatchedDeliveryRule()
+    public void ResolveHandlingTime_ReturnsHandlingTime_FromMatchedDeliveryRule()
     {
         var product = CreateProduct(deliveryType: 0, weight: 8, length: 30, width: 20, height: 10, priceNet: 850);
         var deliveries = new List<DeliverySettings>
@@ -36,7 +36,7 @@ public class OfferFactoryDeliveryAssignmentTests
             new() { RuleType = DeliveryRuleType.Standard, NetPriceThreshold = 800, DeliveryName = "STANDARD-800", HandlingTime = DeliveryHandlingTime.P3D }
         };
 
-        var result = OfferFactory.ResolveHandlingTimeForTests(product, deliveries, DeliveryMatchMode.Price);
+        var result = SalesRules.GetDeliveryRule(product, deliveries, DeliveryMatchMode.Price)?.HandlingTime.ToString();
 
         // DeliveryHandlingTime.P3D -> "P3D" (ISO-8601 3 days). The matched rule is STANDARD-800
         // because its 800 net-price threshold is the highest that still covers the 850 net price.
@@ -44,7 +44,7 @@ public class OfferFactoryDeliveryAssignmentTests
     }
 
     [Fact]
-    public void ResolveDeliveryNameForTests_ReturnsBulkyRate_ForDeliveryType1_InPriceMode()
+    public void ResolveDeliveryName_ReturnsBulkyRate_ForDeliveryType1_InPriceMode()
     {
         var product = CreateProduct(deliveryType: 1, weight: 12, length: 40, width: 20, height: 10, priceNet: 1400);
         var deliveries = new List<DeliverySettings>
@@ -55,13 +55,13 @@ public class OfferFactoryDeliveryAssignmentTests
             new() { RuleType = DeliveryRuleType.Standard, NetPriceThreshold = 0, DeliveryName = "STANDARD" }
         };
 
-        var result = OfferFactory.ResolveDeliveryNameForTests(product, deliveries, DeliveryMatchMode.Price);
+        var result = SalesRules.GetDeliveryRule(product, deliveries, DeliveryMatchMode.Price)?.DeliveryName;
 
         Assert.Equal("BULKY-1300", result);
     }
 
     [Fact]
-    public void ResolveDeliveryNameForTests_ReturnsStandardRate_ForRegularProduct_InPriceMode()
+    public void ResolveDeliveryName_ReturnsStandardRate_ForRegularProduct_InPriceMode()
     {
         var product = CreateProduct(deliveryType: 0, weight: 8, length: 30, width: 20, height: 10, priceNet: 850);
         var deliveries = new List<DeliverySettings>
@@ -72,13 +72,13 @@ public class OfferFactoryDeliveryAssignmentTests
             new() { RuleType = DeliveryRuleType.Standard, NetPriceThreshold = 800, DeliveryName = "STANDARD-800" }
         };
 
-        var result = OfferFactory.ResolveDeliveryNameForTests(product, deliveries, DeliveryMatchMode.Price);
+        var result = SalesRules.GetDeliveryRule(product, deliveries, DeliveryMatchMode.Price)?.DeliveryName;
 
         Assert.Equal("STANDARD-800", result);
     }
 
     [Fact]
-    public void ResolveDeliveryNameForTests_ReturnsSmallestMatchingStandardRate_InDimensionsMode()
+    public void ResolveDeliveryName_ReturnsSmallestMatchingStandardRate_InDimensionsMode()
     {
         var product = CreateProduct(deliveryType: 0, weight: 10, length: 50, width: 30, height: 20);
         var deliveries = new List<DeliverySettings>
@@ -89,13 +89,13 @@ public class OfferFactoryDeliveryAssignmentTests
             new() { RuleType = DeliveryRuleType.Standard, Weight = 15, Length = 60, Width = 40, Height = 30, DeliveryName = "STANDARD-SMALL" }
         };
 
-        var result = OfferFactory.ResolveDeliveryNameForTests(product, deliveries, DeliveryMatchMode.Weight);
+        var result = SalesRules.GetDeliveryRule(product, deliveries, DeliveryMatchMode.Weight)?.DeliveryName;
 
         Assert.Equal("STANDARD-SMALL", result);
     }
 
     [Fact]
-    public void ResolveDeliveryNameForTests_ReturnsSmallestMatchingBulkyRate_InDimensionsMode()
+    public void ResolveDeliveryName_ReturnsSmallestMatchingBulkyRate_InDimensionsMode()
     {
         var product = CreateProduct(deliveryType: 1, weight: 80, length: 180, width: 90, height: 70);
         var deliveries = new List<DeliverySettings>
@@ -106,13 +106,13 @@ public class OfferFactoryDeliveryAssignmentTests
             new() { RuleType = DeliveryRuleType.Standard, Weight = 50, Length = 120, Width = 80, Height = 60, DeliveryName = "STANDARD" }
         };
 
-        var result = OfferFactory.ResolveDeliveryNameForTests(product, deliveries, DeliveryMatchMode.Weight);
+        var result = SalesRules.GetDeliveryRule(product, deliveries, DeliveryMatchMode.Weight)?.DeliveryName;
 
         Assert.Equal("BULKY-SMALL", result);
     }
 
     [Fact]
-    public void ResolveDeliveryNameForTests_UsesLargestRuleAsFallback_WhenNoDimensionsRuleMatches()
+    public void ResolveDeliveryName_UsesLargestRuleAsFallback_WhenNoDimensionsRuleMatches()
     {
         var product = CreateProduct(deliveryType: 0, weight: 100, length: 300, width: 200, height: 150);
         var deliveries = new List<DeliverySettings>
@@ -123,17 +123,17 @@ public class OfferFactoryDeliveryAssignmentTests
             new() { RuleType = DeliveryRuleType.Standard, Weight = 60, Length = 120, Width = 90, Height = 70, DeliveryName = "STANDARD-BIG" }
         };
 
-        var result = OfferFactory.ResolveDeliveryNameForTests(product, deliveries, DeliveryMatchMode.Weight);
+        var result = SalesRules.GetDeliveryRule(product, deliveries, DeliveryMatchMode.Weight)?.DeliveryName;
 
         Assert.Equal("STANDARD-BIG", result);
     }
 
     [Fact]
-    public void ResolveDeliveryNameForTests_ReturnsNull_WhenNoDeliveriesProvided()
+    public void ResolveDeliveryName_ReturnsNull_WhenNoDeliveriesProvided()
     {
         var product = CreateProduct(deliveryType: 0, weight: 10, length: 50, width: 30, height: 20);
 
-        var result = OfferFactory.ResolveDeliveryNameForTests(product, new List<DeliverySettings>(), DeliveryMatchMode.Price);
+        var result = SalesRules.GetDeliveryRule(product, new List<DeliverySettings>(), DeliveryMatchMode.Price)?.DeliveryName;
 
         Assert.Null(result);
     }

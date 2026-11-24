@@ -7,6 +7,7 @@ namespace AduosSyncServices.Contracts.Clients
     {
         public Task<GaskaGetProductsResponse> GetProducts(GaskaGetProductsRequest request, CancellationToken cancellationToken = default);
         public Task<GaskaGetProductResponse> GetProduct(int id, string lng, CancellationToken cancellationToken = default);
+        public Task<GaskaGetCategoriesResponse> GetCategories(string lng, CancellationToken cancellationToken = default);
         public Task<GaskaGetProductsChangedResponse> GetProductsChanged(DateTime dateFrom, CancellationToken cancellationToken = default);
         public Task<GaskaCreateDeliveryAddressResponse> CreateDeliveryAddress(GaskaCreateDeliveryAddressRequest request, CancellationToken cancellationToken = default);
         public Task<GaskaGetDeliveryAddressesResponse> GetDeliveryAddresses(CancellationToken cancellationToken = default);

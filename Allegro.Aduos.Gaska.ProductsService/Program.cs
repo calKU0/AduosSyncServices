@@ -1,3 +1,4 @@
+using AduosSyncServices.Infrastructure.Helpers;
 using AduosSyncServices.Contracts.Clients;
 using AduosSyncServices.Contracts.Interfaces;
 using AduosSyncServices.Contracts.Settings;
@@ -67,6 +68,8 @@ var host = Host.CreateDefaultBuilder(args)
         services.Configure<AllegroApiCredentials>(configuration.GetSection("AllegroApiCredentials"));
         var appSettingsSection = configuration.GetSection("AppSettings");
         services.Configure<AppSettings>(appSettingsSection);
+        // Stary zapis kategorii "id, id" wiązanie zamieniłoby na pustą listę (= cały katalog na Allegro).
+        services.PostConfigure<AppSettings>(s => s.CategoriesId = ConfigurationLists.ReadIntList(appSettingsSection.GetSection("CategoriesId")));
         services.Configure<PriceSettings>(configuration.GetSection("PriceSettings"));
         services.Configure<AllegroSettings>(configuration.GetSection("AllegroSettings"));
 
@@ -110,6 +113,7 @@ var host = Host.CreateDefaultBuilder(args)
         services.AddScoped<IOfferRepository, OfferRepository>();
         services.AddScoped<IImageRepository, ImageRepository>();
         services.AddScoped<IParameterRepository, ParameterRepository>();
+        services.AddScoped<ISyncCategoryRepository, SyncCategoryRepository>();
 
         // Services
         services.AddScoped<IGaskaApiService, GaskaApiService>();

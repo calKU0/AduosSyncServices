@@ -5,7 +5,11 @@ namespace Allegro.Aduos.Gaska.ProductsService.Settings
 {
     public class AppSettings
     {
-        public string CategoriesId { get; set; } = string.Empty;
+        /// <summary>
+        /// Kategorie Gąski (id) pobierane i wystawiane na Allegro. Pusta lista = cały katalog.
+        /// Wypełniana przez ConfigurationLists.ReadIntList (rozumie też stary zapis "id, id").
+        /// </summary>
+        public List<int> CategoriesId { get; set; } = new();
         public int MinProductStock { get; set; }
         public decimal MinProductPriceNet { get; set; }
         public int LogsExpirationDays { get; set; }

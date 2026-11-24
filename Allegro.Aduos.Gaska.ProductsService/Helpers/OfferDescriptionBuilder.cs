@@ -1,4 +1,4 @@
-using AduosSyncServices.Contracts.DTOs.Allegro;
+﻿using AduosSyncServices.Contracts.DTOs.Allegro;
 using AduosSyncServices.Contracts.Models;
 using AduosSyncServices.Infrastructure.Helpers;
 using System.Globalization;
@@ -66,6 +66,8 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
             var brands = GetRootApplicationNames(product);
             var applications = BuildApplicationLines(product);
             var specifications = BuildSpecificationLines(product);
+            // Części z jakością GVO inną niż zamiennik (np. Corteco - "Q") nie opisujemy jako zamienne.
+            var isReplacement = Services.Allegro.AllegroParametersService.IsReplacementQuality(GetGvoValue(product));
 
             var html = new StringBuilder();
 
@@ -74,7 +76,7 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
             html.Append("<p><b>").Append(name).Append("</b>");
             if (supplier.Length > 0)
                 html.Append(" od producenta <b>").Append(supplier).Append("</b>");
-            html.Append(" to wysokiej jakości część zamienna");
+            html.Append(isReplacement ? " to wysokiej jakości część zamienna" : " to wysokiej jakości część");
             if (brands.Count > 0)
                 html.Append(" do maszyn marki <b>").Append(string.Join(", ", brands.Select(SupplierHtml.Encode))).Append("</b>");
             html.Append(". Sprawdź specyfikację i listę zastosowań poniżej, aby mieć pewność, że część pasuje do Twojej maszyny.</p>");
@@ -84,9 +86,10 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
 
             // 🌟 Dlaczego warto
             html.Append(H2(WhyHeader));
+            var partKind = isReplacement ? "część zamienna" : "część";
             html.Append(Line("Wysoka jakość", supplier.Length > 0
-                ? $"część zamienna renomowanej firmy {supplier}."
-                : "część zamienna renomowanej firmy."));
+                ? $"{partKind} renomowanej firmy {supplier}."
+                : $"{partKind} renomowanej firmy."));
             if (applications.Count > 0)
                 html.Append(Line("Dopasowanie", "pełna lista maszyn, do których pasuje część, znajduje się w sekcji Zastosowanie."));
             if (!string.IsNullOrWhiteSpace(product.Substitutes))
@@ -202,6 +205,12 @@ namespace Allegro.Aduos.Gaska.ProductsService.Helpers
 
             return result;
         }
+
+        /// <summary>Wartość parametru "Jakość części (zgodnie z GVO)" albo null, gdy produkt go nie ma.</summary>
+        private static string? GetGvoValue(Product product) =>
+            product.Parameters?
+                .FirstOrDefault(p => p.Name != null && p.Name.StartsWith("Jakość części", StringComparison.OrdinalIgnoreCase))
+                ?.Value;
 
         private static List<string> GetRootApplicationNames(Product product) =>
             product.Applications?

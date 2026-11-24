@@ -1,4 +1,5 @@
-﻿using AduosSyncServices.Contracts.Models;
+﻿using AduosSyncServices.Contracts.Data.Enums;
+using AduosSyncServices.Contracts.Models;
 
 namespace AduosSyncServices.Contracts.Interfaces
 {
@@ -24,5 +25,16 @@ namespace AduosSyncServices.Contracts.Interfaces
         public Task<List<AllegroOrder>> GetOrdersToUpdateInAllegro();
 
         public Task SetEmailSent(int orderId);
+
+        /// <summary>Numery przesyłek, o których wiemy, że są już w Allegro.</summary>
+        public Task<List<AllegroShipment>> GetSentShipments(int orderId);
+
+        /// <summary>Zapamiętuje numer przesyłki, który jest już w Allegro (idempotentne).</summary>
+        public Task AddSentShipment(int orderId, string carrierId, string waybill);
+
+        public Task MarkShipmentsChecked(int orderId);
+
+        /// <summary>Zapisuje status, który Allegro właśnie przyjęło - żeby nie wysyłać go ponownie.</summary>
+        public Task UpdateRealizeStatus(int orderId, AllegroOrderStatus status);
     }
 }

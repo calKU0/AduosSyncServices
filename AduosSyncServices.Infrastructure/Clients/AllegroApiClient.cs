@@ -80,6 +80,11 @@ namespace AduosSyncServices.Infrastructure.Clients
             return await SendWithResponseAsync($"/order/checkout-forms/{orderId}/fulfillment", HttpMethod.Put, request, ct);
         }
 
+        public async Task<AllegroShipmentsResponse?> GetOrderShipments(string orderId, CancellationToken ct = default)
+        {
+            return await GetAsync<AllegroShipmentsResponse?>($"/order/checkout-forms/{orderId}/shipments", ct);
+        }
+
         public async Task<HttpResponseMessage> AddOrderTrackingNumber(string orderId, AllegroAddTrackingNumberRequest request, CancellationToken ct = default)
         {
             return await SendWithResponseAsync($"/order/checkout-forms/{orderId}/shipments", HttpMethod.Post, request, ct);

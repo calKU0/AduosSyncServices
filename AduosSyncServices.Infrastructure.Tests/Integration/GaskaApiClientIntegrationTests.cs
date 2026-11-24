@@ -28,9 +28,9 @@ namespace AduosSyncServices.Infrastructure.Tests.Integration
 
         private static int FirstConfiguredCategory()
         {
-            var raw = IntegrationConfig.Config["AppSettings:CategoriesId"] ?? "";
-            var first = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
-            return int.TryParse(first, out var id) ? id : 0;
+            return AduosSyncServices.Infrastructure.Helpers.ConfigurationLists
+                .ReadIntList(IntegrationConfig.Config.GetSection("AppSettings:CategoriesId"))
+                .FirstOrDefault();
         }
 
         [SkippableFact]

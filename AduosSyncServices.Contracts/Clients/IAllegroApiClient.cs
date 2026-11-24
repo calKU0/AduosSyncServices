@@ -15,6 +15,8 @@ namespace AduosSyncServices.Contracts.Clients
         Task<AllegroGetOrdersResponse> GetOrders(AllegroGetOrdersRequest request, CancellationToken ct = default);
         Task<AllegroMinimalOfferDetails> GetMinimalOfferInfo(string offerId, CancellationToken ct = default);
         Task<HttpResponseMessage> UpdateOrderStatus(string orderId, AllegroSetOrderStatusRequest request, CancellationToken ct = default);
+        /// <summary>Przesyłki zgłoszone do zamówienia. Null, gdy Allegro nie odpowiedziało poprawnie.</summary>
+        Task<AllegroShipmentsResponse?> GetOrderShipments(string orderId, CancellationToken ct = default);
         Task<HttpResponseMessage> AddOrderTrackingNumber(string orderId, AllegroAddTrackingNumberRequest request, CancellationToken ct = default);
     }
 }

@@ -1,4 +1,4 @@
-﻿namespace Allegro.Aduos.Gaska.ProductsService.Settings
+﻿namespace AduosSyncServices.Contracts.Settings
 {
     public class PriceSettings
     {
