@@ -61,6 +61,12 @@ namespace ShopGold.Aduos.Gaska.ProductsService.Settings
         /// <summary>FTPS (jawne TLS). Większość hostingów to obsługuje.</summary>
         public bool UseFtps { get; set; } = true;
 
+        /// <summary>
+        /// Akceptuj dowolny certyfikat FTPS (bez sprawdzania). Tylko awaryjnie, np. dla serwera z certyfikatem
+        /// self-signed - wyłączona weryfikacja pozwala podszyć się pod serwer i przechwycić hasło.
+        /// </summary>
+        public bool AcceptAnyCertificate { get; set; }
+
         /// <summary>Katalog /import sklepu na FTP - z niego panel importuje pliki CSV.</summary>
         public string ImportDirectory { get; set; } = "/import";
 

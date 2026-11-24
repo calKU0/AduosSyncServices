@@ -56,7 +56,11 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
             // Kategorie innych kanałów (ShopGold) też trzeba pobrać do bazy - produkty z Gąski pobiera
             // tylko ten serwis. Na Allegro trafiają jednak wyłącznie produkty z kategorii Allegro
             // (filtr po powiązaniach ProductSyncCategories w procedurach ofert).
-            var categoriesToFetch = await GetCategoriesToFetchAsync(ct);
+            var (categoriesToFetch, allChannelsKnown) = await GetCategoriesToFetchAsync(ct);
+
+            // Bez kategorii innych kanałów lista jest niepełna - sprzątanie powiązań i archiwizacja
+            // potraktowałyby produkty tych kanałów jak usunięte z Gąski.
+            hasErrors = !allChannelsKnown;
 
             if (!_categoriesIds.Any())
             {
@@ -136,9 +140,10 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
 
         /// <summary>
         /// Zapisuje kategorie Allegro do wspólnej tabeli i zwraca sumę kategorii wszystkich kanałów.
-        /// Przy błędzie bazy pobieramy tylko kategorie Allegro - jak przed wprowadzeniem kanałów.
+        /// Przy błędzie bazy pobieramy tylko kategorie Allegro (AllChannelsKnown = false) - lista jest wtedy
+        /// niepełna i nie wolno na jej podstawie niczego usuwać ani archiwizować.
         /// </summary>
-        private async Task<List<int>> GetCategoriesToFetchAsync(CancellationToken ct)
+        private async Task<(List<int> Categories, bool AllChannelsKnown)> GetCategoriesToFetchAsync(CancellationToken ct)
         {
             try
             {
@@ -160,15 +165,19 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
                         otherChannels.Count, string.Join(", ", otherChannels));
                 }
 
-                return _categoriesIds.Concat(otherChannels).ToList();
+                return (_categoriesIds.Concat(otherChannels).ToList(), true);
             }
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {
-                _logger.LogError(ex, "Error while reading categories of other sales channels. Fetching Allegro categories only.");
-                return _categoriesIds.ToList();
+                _logger.LogError(ex, "Error while reading categories of other sales channels. Fetching Allegro categories only; link cleanup and archiving skipped.");
+                return (_categoriesIds.ToList(), false);
             }
         }
 
+        /// <remarks>
+        /// Błąd przerywa cykl: produkt bez powiązań kategorii jest dla procedur ofert produktem Allegro,
+        /// więc świeżo pobrany produkt innego kanału zostałby w tym samym cyklu wystawiony na Allegro.
+        /// </remarks>
         private async Task SaveCategoryLinksAsync(int categoryId, IEnumerable<int> integrationIds, CancellationToken ct)
         {
             try
@@ -177,7 +186,8 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
             }
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {
-                _logger.LogError(ex, "Saving product links for category {CategoryId} failed.", categoryId);
+                _logger.LogError(ex, "Saving product links for category {CategoryId} failed - stopping the cycle so no offers are created from incomplete links.", categoryId);
+                throw;
             }
         }
 
@@ -216,6 +226,15 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.GaskaApiService
                     if (response == null)
                     {
                         _logger.LogError("API error while fetching page {Page} for category {Category}.", page, categoryId ?? 0);
+                        return (false, integrationIds);
+                    }
+
+                    // API zwraca Result = 0 także dla pustej strony i nieznanej kategorii - inny kod to błąd,
+                    // a lista produktów może być niepełna (nie wolno na niej opierać powiązań ani archiwizacji).
+                    if (response.Result != 0)
+                    {
+                        _logger.LogError("Gąska API returned error {Result} ({Message}) on page {Page} for category {Category}.",
+                            response.Result, response.Message, page, categoryId ?? 0);
                         return (false, integrationIds);
                     }
 

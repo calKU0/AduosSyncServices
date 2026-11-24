@@ -227,7 +227,9 @@ namespace ShopGold.Aduos.Gaska.ProductsService.Services
         {
             var client = new AsyncFtpClient(_settings.Host, _settings.User, _settings.Password, _settings.Port);
             client.Config.EncryptionMode = _settings.UseFtps ? FtpEncryptionMode.Explicit : FtpEncryptionMode.None;
-            client.Config.ValidateAnyCertificate = true;
+            // Certyfikat serwera sprawdzamy (zaufany urząd, zgodna nazwa hosta) - inaczej dane logowania
+            // i wgrywane pliki mógłby przejąć ktoś podszywający się pod serwer.
+            client.Config.ValidateAnyCertificate = _settings.AcceptAnyCertificate;
             client.Config.RetryAttempts = 3;
             client.Config.ConnectTimeout = 30000;
             client.Config.ReadTimeout = 60000;
