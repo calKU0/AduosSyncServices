@@ -5,6 +5,7 @@ using AduosSyncServices.Contracts.Models;
 using AduosSyncServices.Infrastructure.Helpers;
 using Allegro.Aduos.Gaska.ProductsService.Constants;
 using Allegro.Aduos.Gaska.ProductsService.Helpers;
+using AduosSyncServices.Contracts.Settings;
 using Allegro.Aduos.Gaska.ProductsService.Settings;
 using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
@@ -717,6 +718,47 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                 return true;
             }
 
+            var errorText = !string.IsNullOrEmpty(userMessage) ? userMessage : message;
+
+            // "Parametr zależny Jakość części (zgodnie z GVO) (214434) nie może przyjąć wartości [P - zamiennik ...],
+            // gdy parametr Producent części (127415) ma wartości [Corteco]" - ustawiamy jakość oryginału.
+            if (code.Contains("DependencyValidator", StringComparison.OrdinalIgnoreCase)
+                && errorText.Contains($"({AllegroParametersService.GvoParameterId})", StringComparison.Ordinal))
+            {
+                var rejectedValue = ExtractFirstBracketValue(errorText);
+                var categoryParams = await _categoryRepo.GetCategoryParametersAsync(product.DefaultAllegroCategory, CancellationToken.None);
+                var gvoParam = categoryParams.FirstOrDefault(p => p.ParameterId == AllegroParametersService.GvoParameterId);
+                var replacement = gvoParam == null
+                    ? null
+                    : AllegroParametersService.ChooseGvoReplacement(gvoParam.Values.Select(v => v.Value), rejectedValue);
+
+                if (replacement == null)
+                    return false;
+
+                await _parameterRepo.UpdateParameter(product.Id, AllegroParametersService.GvoParameterId, replacement, CancellationToken.None);
+                _logger.LogInformation("Updated GVO quality for {Code} from '{Rejected}' to '{Replacement}' (rejected for this producer).", product.Code, rejectedValue, replacement);
+                return true;
+            }
+
+            // "EAN (GTIN), który zaczyna się od 201 to Numer Ograniczonej Dystrybucji - RCN i nie może być wykorzystany na Allegro"
+            // - EAN wewnętrzny/sklepowy, usuwamy go z parametrów produktu.
+            if (errorText.Contains("Ograniczonej Dystrybucji", StringComparison.OrdinalIgnoreCase)
+                || errorText.Contains("Restricted Circulation", StringComparison.OrdinalIgnoreCase)
+                || (errorText.Contains("EAN", StringComparison.OrdinalIgnoreCase) && errorText.Contains("RCN", StringComparison.Ordinal)))
+            {
+                await _parameterRepo.DeleteParameter("EAN (GTIN)", product.Id, CancellationToken.None);
+                _logger.LogInformation("Removed restricted-circulation EAN '{Ean}' from parameters of {Code}.", product.Ean, product.Code);
+                return true;
+            }
+
+            // "Nie można stworzyć produktu bez podania poprawnych wartości wszystkich parametrów wymaganych: [EAN (GTIN), Kod producenta]"
+            if (code == "ProductValidationException"
+                && (errorText.Contains("parametrów wymaganych", StringComparison.OrdinalIgnoreCase)
+                    || errorText.Contains("required parameters", StringComparison.OrdinalIgnoreCase)))
+            {
+                return await FillMissingRequiredParameters(product, ExtractLastBracketValues(errorText));
+            }
+
             if (userMessage.Contains("Podany adres obrazka jest nieprawidłowy."))
             {
                 // Zdjęcia zostaną wgrane od nowa w kolejnym cyklu.
@@ -750,6 +792,74 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Uzupełnia brakujące parametry wymagane (np. EAN z bazy, Kod producenta = kod towaru).
+        /// Zwraca true, gdy udało się ustalić wartości wszystkich wymienionych parametrów.
+        /// </summary>
+        private async Task<bool> FillMissingRequiredParameters(Product product, List<string> parameterNames)
+        {
+            if (parameterNames.Count == 0)
+                return false;
+
+            var categoryParams = (await _categoryRepo.GetCategoryParametersAsync(product.DefaultAllegroCategory, CancellationToken.None)).ToList();
+            var toInsert = new List<ProductParameter>();
+            var allResolved = true;
+
+            foreach (var name in parameterNames)
+            {
+                var catParam = categoryParams.FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
+                var value = catParam == null ? null : AllegroParametersService.ResolveParameterValue(product, catParam);
+
+                if (catParam == null || string.IsNullOrWhiteSpace(value))
+                {
+                    allResolved = false;
+                    _logger.LogWarning("Cannot fill required parameter '{ParameterName}' for {Code} - no value in product data (EAN: '{Ean}').", name, product.Code, product.Ean);
+                    continue;
+                }
+
+                if (product.Parameters?.Any(p => string.Equals(p.Name, catParam.Name, StringComparison.OrdinalIgnoreCase)) == true)
+                {
+                    await _parameterRepo.UpdateParameter(product.Id, catParam.ParameterId, value, CancellationToken.None);
+                }
+                else
+                {
+                    toInsert.Add(new ProductParameter
+                    {
+                        ProductId = product.Id,
+                        CategoryParameterId = catParam.Id,
+                        IsForProduct = catParam.DescribesProduct,
+                        Value = value
+                    });
+                }
+
+                _logger.LogInformation("Set required parameter '{ParameterName}' for {Code} to '{Value}'", catParam.Name, product.Code, value);
+            }
+
+            if (toInsert.Count > 0)
+                await _parameterRepo.SaveProductParametersAsync(toInsert, CancellationToken.None);
+
+            return allResolved;
+        }
+
+        /// <summary>Pierwsza wartość w nawiasach kwadratowych: "... wartości [P - zamiennik], gdy ..." -> "P - zamiennik".</summary>
+        internal static string? ExtractFirstBracketValue(string text)
+        {
+            var match = Regex.Match(text ?? string.Empty, @"\[([^\]]*)\]");
+            return match.Success ? match.Groups[1].Value.Trim() : null;
+        }
+
+        /// <summary>Lista z ostatnich nawiasów kwadratowych: "... wymaganych: [EAN (GTIN), Kod producenta]".</summary>
+        internal static List<string> ExtractLastBracketValues(string text)
+        {
+            var matches = Regex.Matches(text ?? string.Empty, @"\[([^\]]*)\]");
+            if (matches.Count == 0)
+                return new List<string>();
+
+            return matches[^1].Groups[1].Value
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
         }
 
         private string ExtractParameterNameFromNotFoundMessage(string message)
@@ -839,7 +949,8 @@ namespace Allegro.Aduos.Gaska.ProductsService.Services.Allegro
                             return;
                         }
 
-                        var contentType = Utils.GetContentTypeFromPath(filePath);
+                        // Powiększone zdjęcie jest zawsze JPEG - także gdy plik był PNG.
+                        var contentType = Utils.GetContentType(filePath, imageBytes, validatedBytes);
 
                         var uploadResult = await _apiClient.UploadImage(validatedBytes, contentType, token);
 

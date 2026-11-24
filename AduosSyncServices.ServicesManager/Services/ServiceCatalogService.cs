@@ -1,6 +1,7 @@
 using AduosSyncServices.ServicesManager.Models;
 using System.Collections.Generic;
 using System.Configuration;
+using System.IO;
 using System.Linq;
 
 namespace AduosSyncServices.ServicesManager.Services
@@ -23,7 +24,7 @@ namespace AduosSyncServices.ServicesManager.Services
                     Id = key,
                     Name = ConfigurationManager.AppSettings[$"Service_{key}_Name"] ?? key,
                     Account = ConfigurationManager.AppSettings[$"Service_{key}_Account"] ?? string.Empty,
-                    LogoPath = ConfigurationManager.AppSettings[$"Service_{key}_LogoPath"] ?? string.Empty,
+                    LogoPath = ResolveLogoPath(ConfigurationManager.AppSettings[$"Service_{key}_LogoPath"]),
                     ServiceName = ConfigurationManager.AppSettings[$"Service_{key}_ServiceName"] ?? string.Empty,
                     LogFolderPath = ConfigurationManager.AppSettings[$"Service_{key}_LogFolder"] ?? string.Empty,
                     ExternalConfigPath = ConfigurationManager.AppSettings[$"Service_{key}_ConfigPath"] ?? string.Empty,
@@ -32,6 +33,20 @@ namespace AduosSyncServices.ServicesManager.Services
             }
 
             return services;
+        }
+
+        /// <summary>
+        /// Ścieżka względna (np. "Resources\gaska-products-sync-logo.png") jest liczona od katalogu aplikacji -
+        /// dzięki temu App.config nie zawiera ścieżek do konkretnego komputera ani folderu bin.
+        /// </summary>
+        private static string ResolveLogoPath(string? configured)
+        {
+            var path = (configured ?? string.Empty).Trim();
+
+            if (path.Length == 0 || Path.IsPathRooted(path))
+                return path;
+
+            return Path.Combine(AppContext.BaseDirectory, path);
         }
 
         public List<string> GetAccounts(IEnumerable<ServiceItem> services)

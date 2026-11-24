@@ -31,6 +31,7 @@ namespace AduosSyncServices.Contracts.Models
         public IntegrationCompany IntegrationCompany { get; set; }
         public int IntegrationId { get; set; }
         public int DeliveryType { get; set; }
+
         public List<ProductPackage>? Packages { get; set; }
         public List<ProductApplication>? Applications { get; set; }
         public List<ProductSpecification>? Specifications { get; set; }

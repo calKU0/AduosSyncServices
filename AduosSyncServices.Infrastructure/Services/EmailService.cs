@@ -38,7 +38,8 @@ namespace AduosSyncServices.Infrastructure.Services
                 using var client = new SmtpClient();
                 await client.ConnectAsync(_smtpSettings.Host, _smtpSettings.Port, SecureSocketOptions.SslOnConnect);
                 await client.AuthenticateAsync(_smtpSettings.User, _smtpSettings.Password);
-                await client.SendAsync(message);
+                // MailKit 5: wysyłka przyjmuje żądanie (ISendRequest) zamiast samej wiadomości.
+                await client.SendAsync(FormatOptions.Default, new SmtpSendRequest(message));
                 await client.DisconnectAsync(true);
             }
             catch (Exception ex)

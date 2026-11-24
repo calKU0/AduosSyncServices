@@ -1,4 +1,4 @@
-using Allegro.Aduos.Gaska.ProductsService.Helpers;
+using AduosSyncServices.Infrastructure.Helpers;
 using Xunit;
 
 namespace Allegro.Aduos.Gaska.ProductsService.Tests.Helpers;

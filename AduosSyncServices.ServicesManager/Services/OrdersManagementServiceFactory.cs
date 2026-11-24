@@ -1,4 +1,4 @@
-using AduosSyncServices.Contracts.Clients;
+﻿using AduosSyncServices.Contracts.Clients;
 using AduosSyncServices.Contracts.Data.Enums;
 using AduosSyncServices.Contracts.Interfaces;
 using AduosSyncServices.Contracts.Settings;
@@ -9,6 +9,7 @@ using AduosSyncServices.Infrastructure.Repositories;
 using AduosSyncServices.Infrastructure.Services;
 using AduosSyncServices.Infrastructure.Settings;
 using AduosSyncServices.ServicesManager.Models;
+using MarginRange = AduosSyncServices.ServicesManager.Models.MarginRange;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;

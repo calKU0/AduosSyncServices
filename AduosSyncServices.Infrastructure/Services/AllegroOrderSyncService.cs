@@ -3,6 +3,7 @@ using AduosSyncServices.Contracts.Data.Enums;
 using AduosSyncServices.Contracts.DTOs.Allegro;
 using AduosSyncServices.Contracts.Interfaces;
 using AduosSyncServices.Contracts.Models;
+using AduosSyncServices.Infrastructure.Helpers;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
 using System.Text.Json;
@@ -236,105 +237,33 @@ namespace AduosSyncServices.Infrastructure.Services
 
         public async Task UpdateOrdersInAllegro(IProgress<string>? progress = null, CancellationToken ct = default)
         {
+            int statuses = 0, shipments = 0;
+
             try
             {
                 var orders = await _orderRepo.GetOrdersToUpdateInAllegro();
                 progress?.Report($"Aktualizowanie {orders.Count} zamówień w Allegro...");
+
                 foreach (var order in orders)
                 {
-                    // --- Update Order Status ---
-                    try
-                    {
-                        var status = MapGaskaStatusToAllegro(order.ExternalOrderStatus);
-                        if (status != order.RealizeStatus && status != AllegroOrderStatus.NEW)
-                        {
-                            var statusRequest = new AllegroSetOrderStatusRequest
-                            {
-                                Status = status
-                            };
+                    ct.ThrowIfCancellationRequested();
 
-                            var response = await _allegroApiClient.UpdateOrderStatus(order.AllegroId, statusRequest, ct);
-                            if (!response.IsSuccessStatusCode)
-                            {
-                                var body = await response.Content.ReadAsStringAsync(ct);
-                                LogAllegroErrors(response, body, "status", order.AllegroId);
-                            }
-                            else
-                            {
-                                _logger.LogInformation("Updated Order Status to {Status} for Allegro Order {AllegroOrderId}.", status, order.AllegroId);
-                            }
-                        }
-                        else
-                        {
-                            _logger.LogInformation("No status change for Allegro order {AllegroOrderId}.", order.AllegroId);
-                        }
-                    }
-                    catch (Exception ex)
+                    var status = MapGaskaStatusToAllegro(order.ExternalOrderStatus);
+                    if (status != order.RealizeStatus && status != AllegroOrderStatus.NEW)
                     {
-                        _logger.LogError(ex, "Failed to update Order Status {AllegroOrderId} in Allegro.", order.AllegroId);
+                        if (await SendStatusToAllegro(order, status, ct))
+                            statuses++;
                     }
 
-                    // --- Update Tracking Number ---
-                    try
-                    {
-                        var items = order.Items;
-                        if (items == null || !items.Any())
-                            continue;
-
-                        // Group items by tracking number (ignore those without tracking)
-                        var groups = items
-                            .Where(i => !string.IsNullOrWhiteSpace(i.ExternalTrackingNumber))
-                            .GroupBy(i => i.ExternalTrackingNumber);
-
-                        foreach (var group in groups)
-                        {
-                            var trackingNumber = group.Key;
-                            var lineItems = group.Select(i => new AllegroAddTrackingNumberRequest.LineItem
-                            {
-                                Id = i.OrderItemId
-                            }).ToList();
-
-                            var carrierId = group.First().ExternalCourier;
-
-                            carrierId = carrierId?.ToUpperInvariant() switch
-                            {
-                                var s when s.Contains("DPD") => "DPD",
-                                var s when s.Contains("FEDEX") => "FEDEX",
-                                var s when s.Contains("GLS") => "GLS",
-                                _ => carrierId
-                            };
-
-                            var request = new AllegroAddTrackingNumberRequest
-                            {
-                                CarrierId = carrierId,
-                                Waybill = trackingNumber,
-                                LineItems = lineItems
-                            };
-
-                            var response = await _allegroApiClient.AddOrderTrackingNumber(order.AllegroId, request, ct);
-
-                            if (!response.IsSuccessStatusCode)
-                            {
-                                var body = await response.Content.ReadAsStringAsync(ct);
-                                LogAllegroErrors(response, body, "tracking numbers", order.AllegroId);
-                            }
-                            else
-                            {
-                                _logger.LogInformation("Updated tracking number {TrackingNumber} for Allegro Order {AllegroOrderId} (Items: {Count}).", trackingNumber, order.AllegroId, lineItems.Count);
-                            }
-                        }
-
-                        if (!groups.Any())
-                        {
-                            _logger.LogInformation("No tracking numbers found for Allegro order {AllegroOrderId}.", order.AllegroId);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Failed to update Order Tracking Number {AllegroOrderId} in Allegro.", order.AllegroId);
-                    }
+                    shipments += await SendTrackingNumbersToAllegro(order, ct);
                 }
-                progress?.Report("Zakończono aktualizację zamówień w Allegro.");
+
+                _logger.LogInformation("Allegro orders updated - statuses: {Statuses}, tracking numbers: {Shipments}.", statuses, shipments);
+                progress?.Report($"Zakończono aktualizację zamówień w Allegro (statusy: {statuses}, numery przesyłek: {shipments}).");
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -343,6 +272,158 @@ namespace AduosSyncServices.Infrastructure.Services
             }
         }
 
+        private async Task<bool> SendStatusToAllegro(AllegroOrder order, AllegroOrderStatus status, CancellationToken ct)
+        {
+            try
+            {
+                var response = await _allegroApiClient.UpdateOrderStatus(order.AllegroId, new AllegroSetOrderStatusRequest { Status = status }, ct);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    // Zapisujemy stan, który Allegro właśnie przyjęło. Bez tego kolejny cykl
+                    // porównuje nowy status ze starym i wysyła dokładnie to samo jeszcze raz.
+                    order.RealizeStatus = status;
+                    await _orderRepo.UpdateRealizeStatus(order.Id, status);
+
+                    _logger.LogInformation("Updated Order Status to {Status} for Allegro Order {AllegroOrderId}.", status, order.AllegroId);
+                    return true;
+                }
+
+                LogAllegroErrors(response, await response.Content.ReadAsStringAsync(ct), "status", order.AllegroId);
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                _logger.LogError(ex, "Failed to update Order Status {AllegroOrderId} in Allegro.", order.AllegroId);
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Wysyła do Allegro numery przesyłek, których Allegro jeszcze nie ma. Zwraca liczbę wysłanych.
+        /// </summary>
+        private async Task<int> SendTrackingNumbersToAllegro(AllegroOrder order, CancellationToken ct)
+        {
+            var sent = 0;
+
+            try
+            {
+                var shipments = GroupShipments(order.Items);
+                if (shipments.Count == 0)
+                    return 0;
+
+                var known = await GetKnownShipments(order, ct);
+
+                foreach (var shipment in shipments)
+                {
+                    // Ten numer Allegro już zna - ponowne wysłanie tylko zakładałoby duplikat przesyłki.
+                    if (known.Contains(TrackingNumbers.ShipmentKey(shipment.CarrierId, shipment.Waybill)))
+                        continue;
+
+                    var request = new AllegroAddTrackingNumberRequest
+                    {
+                        CarrierId = shipment.CarrierId,
+                        Waybill = shipment.Waybill,
+                        LineItems = shipment.LineItemIds
+                            .Select(id => new AllegroAddTrackingNumberRequest.LineItem { Id = id })
+                            .ToList()
+                    };
+
+                    var response = await _allegroApiClient.AddOrderTrackingNumber(order.AllegroId, request, ct);
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        sent++;
+                        known.Add(TrackingNumbers.ShipmentKey(shipment.CarrierId, shipment.Waybill));
+                        await _orderRepo.AddSentShipment(order.Id, shipment.CarrierId, shipment.Waybill);
+
+                        _logger.LogInformation("Tracking number {TrackingNumber} ({Carrier}) sent for Allegro order {AllegroOrderId} (items: {Count}).",
+                            shipment.Waybill, shipment.CarrierId, order.AllegroId, shipment.LineItemIds.Count);
+                    }
+                    else
+                    {
+                        LogAllegroErrors(response, await response.Content.ReadAsStringAsync(ct), "tracking numbers", order.AllegroId);
+                    }
+                }
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                _logger.LogError(ex, "Failed to update Order Tracking Number {AllegroOrderId} in Allegro.", order.AllegroId);
+            }
+
+            return sent;
+        }
+
+        /// <summary>Przesyłka do zgłoszenia w Allegro: jeden numer u jednego przewoźnika i pozycje zamówienia w tej paczce.</summary>
+        internal sealed record ShipmentToSend(string CarrierId, string Waybill, IReadOnlyList<string> LineItemIds);
+
+        /// <summary>
+        /// Gąska potrafi zwrócić kilka numerów przesyłki w jednym polu, rozdzielonych przecinkiem.
+        /// Allegro nie przyjmuje takiego zlepka - każdy numer idzie osobno, z pozycjami, których dotyczy.
+        /// </summary>
+        internal static List<ShipmentToSend> GroupShipments(IEnumerable<AllegroOrderItem>? items) =>
+            (items ?? Enumerable.Empty<AllegroOrderItem>())
+                .SelectMany(item => TrackingNumbers.Split(item.ExternalTrackingNumber)
+                    .Select(waybill => new
+                    {
+                        Waybill = waybill,
+                        Carrier = TrackingNumbers.NormalizeCarrierId(item.ExternalCourier) ?? string.Empty,
+                        item.OrderItemId
+                    }))
+                .GroupBy(x => TrackingNumbers.ShipmentKey(x.Carrier, x.Waybill))
+                .Select(g => new ShipmentToSend(
+                    g.First().Carrier,
+                    g.First().Waybill,
+                    g.Select(x => x.OrderItemId).Where(id => !string.IsNullOrEmpty(id)).Distinct(StringComparer.Ordinal).ToList()))
+                .ToList();
+
+        /// <summary>
+        /// Numery przesyłek, które Allegro już ma. Przy pierwszym przetwarzaniu zamówienia pytamy
+        /// o nie Allegro - zamówienie mogło dostać przesyłki wcześniej (także z tego serwisu, zanim
+        /// pamiętał, co wysłał). Potem wystarczy zapis w bazie.
+        /// </summary>
+        private async Task<HashSet<string>> GetKnownShipments(AllegroOrder order, CancellationToken ct)
+        {
+            var known = (await _orderRepo.GetSentShipments(order.Id))
+                .Select(s => TrackingNumbers.ShipmentKey(s.CarrierId, s.Waybill))
+                .ToHashSet(StringComparer.Ordinal);
+
+            if (order.ShipmentsCheckedAt != null)
+                return known;
+
+            try
+            {
+                var response = await _allegroApiClient.GetOrderShipments(order.AllegroId, ct);
+
+                if (response == null)
+                {
+                    // Null przy nieudanej odpowiedzi - pusta lista znaczyłaby "brak przesyłek", a po oznaczeniu
+                    // zamówienia jako sprawdzone nigdy byśmy tego nie zweryfikowali.
+                    _logger.LogWarning("Reading shipments of Allegro order {AllegroOrderId} returned no data - the order stays unreconciled.", order.AllegroId);
+                    return known;
+                }
+
+                foreach (var shipment in response.Shipments ?? new List<AllegroShipmentsResponse.Shipment>())
+                {
+                    if (string.IsNullOrWhiteSpace(shipment.Waybill))
+                        continue;
+
+                    var carrier = shipment.CarrierId ?? string.Empty;
+                    known.Add(TrackingNumbers.ShipmentKey(carrier, shipment.Waybill));
+                    await _orderRepo.AddSentShipment(order.Id, carrier, shipment.Waybill);
+                }
+
+                await _orderRepo.MarkShipmentsChecked(order.Id);
+                order.ShipmentsCheckedAt = DateTime.UtcNow;
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                // Bez tej listy wyślemy numer, który może już tam być - gorsze byłoby pominięcie wysyłki.
+                _logger.LogWarning(ex, "Reading shipments of Allegro order {AllegroOrderId} failed.", order.AllegroId);
+            }
+
+            return known;
+        }
 
         private void LogAllegroErrors(HttpResponseMessage response, string body, string action, string orderId)
         {

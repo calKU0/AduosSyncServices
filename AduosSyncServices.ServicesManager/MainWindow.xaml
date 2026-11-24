@@ -206,7 +206,7 @@
         <!-- Service selection overlay -->
         <Grid x:Name="ServiceSelectionOverlay" Background="#CCFFFFFF" Visibility="Visible" ZIndex="10">
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                <TextBlock Text="Wybierz konto" FontSize="24" FontWeight="Bold" Margin="0,0,0,12" HorizontalAlignment="Center" />
+                <TextBlock x:Name="TbAccountSelectorOverlay" Text="Wybierz konto" FontSize="24" FontWeight="Bold" Margin="0,0,0,12" HorizontalAlignment="Center" />
                 <ComboBox x:Name="CbAccountSelectorOverlay"
                           Width="260"
                           Margin="0,0,0,20"
@@ -271,7 +271,14 @@
                                       SelectedValuePath="Id"
                                       SelectedItem="{Binding SelectedService, Mode=TwoWay}" />
                         </Grid>
-                        <TextBlock x:Name="ServiceNameTextBox" Text="..." FontSize="18" FontWeight="Bold" Foreground="#111827" HorizontalAlignment="Center" Margin="6,10,6,0" />
+                        <!-- Logo serwisu, który jest aktualnie otwarty -->
+                        <Image x:Name="ServiceLogoImage"
+                               Source="{Binding SelectedService.LogoPath, TargetNullValue={x:Null}, FallbackValue={x:Null}}"
+                               Height="110"
+                               Margin="0,14,0,0"
+                               HorizontalAlignment="Center"
+                               RenderOptions.BitmapScalingMode="HighQuality" />
+                        <TextBlock x:Name="ServiceNameTextBox" Text="..." FontSize="18" FontWeight="Bold" Foreground="#111827" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Margin="6,10,6,0" />
                         <TextBlock Text="Panel" FontSize="18" FontWeight="Bold" Foreground="#111827" HorizontalAlignment="Center" />
 
                         <!-- Nav buttons: service-specific panels first, Configuration second-to-last, Logs last -->

@@ -1,3 +1,4 @@
+using AduosSyncServices.ServicesManager.Controls;
 using AduosSyncServices.ServicesManager.Enums;
 using AduosSyncServices.ServicesManager.Models;
 using System.Collections.Generic;
@@ -22,6 +23,13 @@ namespace AduosSyncServices.ServicesManager.Helpers
 
                 foreach (var grid in stackPanel.Children.OfType<Grid>())
                 {
+                var picker = grid.Children.OfType<CategoryPickerEditor>().FirstOrDefault();
+                if (picker?.Tag is string pickerKey)
+                {
+                    values[pickerKey] = CategoryListJson(picker.GetItems());
+                    continue;
+                }
+
                 var tb = grid.Children.OfType<TextBox>().FirstOrDefault();
                 if (tb == null || tb.Tag is not string key)
                     continue;
@@ -52,6 +60,13 @@ namespace AduosSyncServices.ServicesManager.Helpers
 
             return (values, errors);
         }
+
+        /// <summary>Lista id kategorii jako tablica JSON - zapis konfiguracji wstawia ją jako tablicę, nie tekst.</summary>
+        public static string CategoryListJson(IEnumerable<string> keys) =>
+            "[" + string.Join(", ", keys
+                .Select(k => int.TryParse(k?.Trim(), out var id) ? id : 0)
+                .Where(id => id != 0)
+                .Distinct()) + "]";
 
         private static bool TryParseDecimal(string input, out decimal result)
         {

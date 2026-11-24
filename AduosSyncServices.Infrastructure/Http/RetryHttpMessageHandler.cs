@@ -65,7 +65,8 @@ namespace AduosSyncServices.Infrastructure.Http
                         return response;
 
                     var delay = TimeSpan.FromSeconds(TooManyRequestsBaseDelay.TotalSeconds * Math.Pow(2, attempt));
-                    _logger.LogWarning("Request to {Uri} was rate-limited (429). Waiting {DelaySeconds}s before retry {Attempt}/{MaxRetries}...",
+                    // Rate limiting to normalna praca przy dużej liczbie zapytań - nie ostrzeżenie.
+                    _logger.LogInformation("Request to {Uri} was rate-limited (429). Waiting {DelaySeconds}s before retry {Attempt}/{MaxRetries}...",
                         request.RequestUri, delay.TotalSeconds, attempt + 1, MaxRetries);
                     await Task.Delay(delay, cancellationToken);
                     continue;

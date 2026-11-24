@@ -1,0 +1,56 @@
+<UserControl x:Class="AduosSyncServices.ServicesManager.Controls.CategoryPickerEditor"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DesignHeight="160" d:DesignWidth="480">
+    <StackPanel Margin="0,4,0,4">
+        <Grid>
+            <TextBox x:Name="SearchBox"
+                     Padding="4,2,4,2"
+                     TextChanged="SearchBox_TextChanged"
+                     PreviewKeyDown="SearchBox_PreviewKeyDown"
+                     GotKeyboardFocus="SearchBox_GotKeyboardFocus"
+                     LostKeyboardFocus="SearchBox_LostKeyboardFocus" />
+
+            <!-- Podpowiedź widoczna, gdy pole jest puste -->
+            <TextBlock x:Name="SearchHint"
+                       Margin="7,0,0,0"
+                       VerticalAlignment="Center"
+                       Foreground="Gray"
+                       IsHitTestVisible="False"
+                       Text="Wpisz nazwę kategorii, aby wyszukać…" />
+
+            <Popup x:Name="SuggestionsPopup"
+                   PlacementTarget="{Binding ElementName=SearchBox}"
+                   Placement="Bottom"
+                   StaysOpen="False"
+                   AllowsTransparency="True"
+                   Width="{Binding ActualWidth, ElementName=SearchBox}">
+                <Border Background="White" BorderBrush="#FFB0B0B0" BorderThickness="1">
+                    <StackPanel>
+                        <ListBox x:Name="SuggestionsList"
+                                 MaxHeight="280"
+                                 BorderThickness="0"
+                                 DisplayMemberPath="Path"
+                                 PreviewKeyDown="SuggestionsList_PreviewKeyDown"
+                                 PreviewMouseLeftButtonUp="SuggestionsList_PreviewMouseLeftButtonUp" />
+                        <TextBlock x:Name="SuggestionsInfo"
+                                   Margin="6,3,6,4"
+                                   Foreground="Gray"
+                                   FontSize="11" />
+                    </StackPanel>
+                </Border>
+            </Popup>
+        </Grid>
+
+        <TextBlock x:Name="StatusText"
+                   Margin="0,3,0,0"
+                   FontSize="11"
+                   TextWrapping="Wrap"
+                   Visibility="Collapsed" />
+
+        <StackPanel x:Name="SelectedPanel" Margin="0,4,0,0" />
+    </StackPanel>
+</UserControl>

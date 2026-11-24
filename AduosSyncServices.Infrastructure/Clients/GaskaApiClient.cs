@@ -47,6 +47,14 @@ namespace AduosSyncServices.Infrastructure.Clients
             return await GetDataAsync<GaskaGetProductsResponse>("/products", query, cancellationToken);
         }
 
+        public async Task<GaskaGetCategoriesResponse> GetCategories(string lng, CancellationToken cancellationToken = default)
+        {
+            return await GetDataAsync<GaskaGetCategoriesResponse>("/categories", new Dictionary<string, string?>
+            {
+                { "lng", lng }
+            }, cancellationToken);
+        }
+
         public async Task<GaskaGetProductsChangedResponse> GetProductsChanged(DateTime dateFrom, CancellationToken cancellationToken = default)
         {
             return await GetDataAsync<GaskaGetProductsChangedResponse>("/productsChanged", new Dictionary<string, string?>
